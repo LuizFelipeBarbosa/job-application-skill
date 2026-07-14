@@ -6,7 +6,7 @@ Use this guide before discovering jobs or completing applications in the user's 
 
 1. Load and follow the available Chrome-control skill. Require the Chrome plugin, extension, and active profile connection needed for signed-in browsing and file uploads.
 2. Use a distinct persistent browser binding for the run and give its task or tab group a descriptive name. Reuse that binding across continuations.
-3. Reuse or claim a matching open tab before creating another one. Use the profile's existing signed-in session without inspecting or storing passwords, cookies, local storage, credentials, or authentication tokens.
+3. Reuse or claim a matching open tab before creating another one. Use the profile's existing signed-in session without inspecting passwords, cookies, local storage, credentials, or authentication tokens. Store a password only through the local OS-vault manager after the user explicitly authorizes a new account under the core skill's account-creation workflow.
 4. If the profile is signed out, ask the user to sign in in Chrome and tell you when it is ready. Do not change browsers to bypass authentication.
 
 ## Recover the guarded compatibility failure

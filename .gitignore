@@ -4,6 +4,7 @@
 !.agents/skills/apply-to-jobs/assets/candidate-profile.md
 **/application-state.json
 **/successful-applications.json
+**/accounts.json
 **/applications.jsonl
 
 # Candidate application documents, even if placed outside private/

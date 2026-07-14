@@ -26,7 +26,7 @@ Honor a saved retention preference on later runs without repeating the notice. U
 - Carry work authorization, sponsorship, citizenship, clearance, location, start-date, compensation, reference, screening, or voluntary self-identification answers only when the source states the candidate's current answer directly and unambiguously.
 - Prefer the newest user-supplied resume for dated employment history. Do not silently overwrite a direct saved answer. Record conflicting or plausibly stale values under `Conflicts requiring confirmation` and do not use them until resolved.
 - Never infer protected traits, demographic answers, disability or veteran status, citizenship, work authorization, sponsorship, clearance, relocation willingness, or sensitive answers from names, photos, schools, employers, locations, browser autofill, or indirect context.
-- Never store passwords, one-time codes, authentication data, government identifiers, financial-account data, or unrelated medical details.
+- Never store passwords, one-time codes, or authentication data in the candidate profile or any file. Store a password only in the operating-system credential vault through `scripts/password_manager.py` after the user explicitly authorizes creation of that specific account. Never store government identifiers, financial-account data, or unrelated medical details.
 
 ## Persist explicit answers
 
