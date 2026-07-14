@@ -1,0 +1,29 @@
+# Candidate documents, personal data, and application history
+/private/
+**/candidate-profile.*
+!config/candidate-profile.example.md
+**/application-state.json
+**/applications.jsonl
+
+# Candidate application documents, even if placed outside private/
+**/*[Rr]esume*.pdf
+**/*[Rr]esume*.docx
+**/*[Cc]over[Ll]etter*.pdf
+**/*[Cc]over[Ll]etter*.docx
+**/*[Tt]ranscript*.pdf
+**/*[Tt]ranscript*.docx
+
+# Local credentials and environment values
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Generated working files
+/tmp/
+/output/
+
+__pycache__/
+*.pyc
+.DS_Store
