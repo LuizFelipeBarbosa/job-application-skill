@@ -1,8 +1,9 @@
 # Candidate documents, personal data, and application history
 /private/
 **/candidate-profile.*
-!config/candidate-profile.example.md
+!.agents/skills/apply-to-jobs/assets/candidate-profile.md
 **/application-state.json
+**/successful-applications.json
 **/applications.jsonl
 
 # Candidate application documents, even if placed outside private/

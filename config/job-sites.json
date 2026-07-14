@@ -1,11 +1,18 @@
 {
+  "schema_version": 1,
   "sites": [
     {
+      "id": "handshake",
       "name": "Handshake",
       "enabled": true,
       "priority": 1,
       "browser": "chrome-extension",
-      "discovery_role": "primary",
+      "adapter": "handshake",
+      "capabilities": {
+        "discover_jobs": true,
+        "hosted_applications": true,
+        "follow_external_applications": true
+      },
       "start_url": "https://app.joinhandshake.com/explore",
       "job_search_url": "https://app.joinhandshake.com/job-search",
       "discovery_hosts": [
@@ -18,7 +25,7 @@
         "allow_employer_ats": true,
         "allow_external_job_boards_as_discovery": false
       },
-      "instructions": ".agents/skills/apply-to-jobs/references/handshake.md"
+      "instructions": "references/handshake.md"
     }
   ]
 }

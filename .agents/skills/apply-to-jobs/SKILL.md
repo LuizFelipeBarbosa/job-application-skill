@@ -1,168 +1,110 @@
 ---
 name: apply-to-jobs
-description: Build or refresh a private candidate profile from user-uploaded resumes, cover letters, transcripts, portfolios, and related materials; prompt only for missing candidate directions; find jobs through configured discovery sites such as Handshake; and apply to a user-defined number through Handshake or verified external employer career and ATS sites. Use the Chrome extension for signed-in browsing and file uploads, prevent duplicates, and count only confirmed submissions. Use when the user asks Codex to search for and submit job applications, run or resume a job-application batch, target Handshake, or invokes $apply-to-jobs in a /goal objective. Do not use for resume review or job-listing research that does not include submission.
+description: Find matching roles and submit a bounded batch of job applications using authorized candidate materials and a signed-in browser session. Build or refresh a private reusable candidate profile, ask only for information required by the current search or form, prevent duplicate submissions, resume interrupted batches, and count only confirmed applications. Use when the user asks to apply to jobs or continue a job-application batch through configured job sites or employer ATS systems, including Handshake. Do not use for research-only job searches or resume review.
 ---
 
 # Apply to Jobs
 
-Execute a truthful, goal-bounded job search for the candidate. Continue until the requested number of confirmed applications has been submitted, the user pauses the goal, or a genuine blocker remains after exhausting safe alternatives.
+Execute a truthful, user-bounded job search. Continue until the requested number of applications is confirmed, the user pauses the run, or no safe alternative remains.
 
-## Establish the run
+## Resolve the run
 
-1. Use the active `/goal` objective as the source of the target count and search criteria. When goal tools are available, call `get_goal` at the start of every continuation.
-2. Build or refresh `private/candidate-profile.md` from the user's supplied materials before asking candidate questions, starting the tracker, launching Chrome, uploading files, or searching for jobs. Follow the material workflow below.
-3. Read `config/job-sites.json` and any source-specific instructions needed for the active goal.
-4. Require one unambiguous positive integer for the number of applications. If it is absent, do not submit anything; ask the user to set a goal such as:
+1. Resolve the target count and criteria from the user's newest explicit request. When goal tools are available and a relevant goal is active, call `get_goal` at the start of each continuation and use it as durable context, but let newer explicit instructions refine it. Never require `/goal` syntax or an explicit `$apply-to-jobs` mention.
+2. Require one unambiguous positive target count. If it is missing, ask only how many applications to submit. Do not tell the user to rephrase the request as a goal.
+3. Treat an explicit request to **apply** or **submit** as authorization for ordinary job-application data transmission, authorized document uploads, and final submission. If the user asks only to find, browse, recommend, or research jobs, stop before transmitting private data or submitting.
+4. Read `config/job-sites.json` from the workspace when it exists. Use sources named by the user first, then enabled sources by ascending priority. Resolve relative instruction paths from the skill root. If no configuration exists, use an available source-specific reference only when it matches the user's request.
+5. Resolve `<skill-root>` as the directory containing this `SKILL.md`; never assume the skill is installed under `.agents/skills`. Keep runtime state under the current workspace's ignored `private/` directory.
+6. Read `references/profile.md` completely, then build or incrementally refresh the candidate profile from authorized materials and explicit answers. On first use, tell the user once that reusable answers are stored locally under `private/` and that they may label any answer `session only`.
+7. Ask only questions that block a useful search or the next likely application. Do not request an address, exact start date, compensation, references, demographic choices, or screening answers merely because a later form might ask for them.
+8. Inspect the tracker before starting. Resume a compatible active run. When the user explicitly changes its target or objective, amend it instead of abandoning its completed work. Preserve all prior application history.
 
-   `/goal Apply to 10 entry-level data science jobs using $apply-to-jobs.`
+Start or resume a run with the tracker:
 
-5. Complete the candidate-direction preflight below. Do not start the tracker, launch Chrome, upload files, or search for jobs until the user answers or explicitly declines the outstanding questions.
-6. Start or resume the private tracker from the repository root:
+```bash
+python3 "<skill-root>/scripts/tracker.py" \
+  --state "<workspace>/private/application-state.json" \
+  start --target 10 --objective "Apply to 10 entry-level data science jobs"
+```
 
-   ```bash
-   python3 .agents/skills/apply-to-jobs/scripts/tracker.py start \
-     --target 10 \
-     --objective "Apply to 10 entry-level data science jobs"
-   ```
+Amend an active run without discarding confirmed submissions:
 
-   If an unfinished run has a different target or objective, preserve it and ask before abandoning it. Never overwrite application history.
+```bash
+python3 "<skill-root>/scripts/tracker.py" \
+  --state "<workspace>/private/application-state.json" \
+  amend --target 15 --objective "Apply to 15 entry-level data science jobs"
+```
 
-## Build the candidate profile from supplied materials
+Before browser work, give the user a compact run brief containing the target, key filters, selected sources, default application documents, and submission mode. Default an explicit bounded application request to automatic submission of ordinary forms, while honoring a saved or current instruction to review each submission or review exceptions only.
 
-Before asking the user for candidate information on every new run, inspect the materials they uploaded or explicitly designated for applications. On a continuation with no new or modified materials, reuse the recorded profile and provenance instead of reprocessing unchanged files.
+## Prepare the browser and sources
 
-1. Inventory sources in this order: files attached to the current task, candidate materials the user placed in `private/`, then files already listed under `Source documents` in `private/candidate-profile.md`. Include resumes or CVs, cover letters, transcripts, portfolios, certificates, professional-profile exports, and prior application-answer documents. Do not scan unrelated workspace files.
-2. If `private/candidate-profile.md` does not exist, copy `config/candidate-profile.example.md` to that ignored path before populating it.
-3. Read every relevant material completely. Load and follow the dedicated PDF, document, spreadsheet, or other file skill when the format requires it; visually inspect scanned or image-only pages when text extraction is incomplete.
-4. Extract only explicit, application-relevant facts: identity and contact details; professional URLs; education; employment, dates, and verified achievements; skills, languages, certifications, and portfolio evidence; and the path and purpose of each authorized source file. Carry work authorization, sponsorship, clearance, location, start-date, compensation, reference, or voluntary self-identification answers into the profile only when a source states the candidate's current answer clearly and unambiguously.
-5. Merge extracted facts into the profile without silently overwriting an explicit saved answer. Prefer the most recent user-supplied resume for dated employment history. Record conflicting or plausibly stale values under `Conflicts requiring confirmation` and ask the user before using them.
-6. Record every reviewed material under `Source documents`, including its task attachment name or private path, type, and purpose. If an attachment is authorized for later website upload but has no stable local path, save an unchanged copy under `private/` and record that path. Update `Profile last refreshed from materials` so later continuations can detect new inputs without rereading everything.
-7. Never infer protected traits, demographic answers, disability or veteran status, citizenship, work authorization, sponsorship, clearance, relocation willingness, or other sensitive answers from names, photos, locations, schools, employers, or indirect context. Never store passwords, authentication data, government identifiers, financial-account data, or unrelated medical details in the profile.
-8. Populate `Answers still requiring candidate direction` only with application-relevant questions that remain unsupported, ambiguous, or require a personal choice after all materials have been reviewed.
-
-## Persist candidate responses autonomously
-
-Treat every explicit, application-relevant response from the candidate as durable private-profile input, whether it arrives during preflight, while resolving a form-specific blocker, in a later continuation, or through text transcribed from an image.
-
-- Update `private/candidate-profile.md` in the same turn as soon as the response is provided, before using it in a form or resuming browser work. Do this autonomously; do not wait for a separate request to remember or save the answer.
-- Store reusable facts and directions in the appropriate profile section, including identity, contact, education, employment, skills, work authorization, sponsorship, start date, compensation, location, travel, screening consent, references, offers, and voluntary self-identification answers.
-- Remove resolved entries from `Answers still requiring candidate direction`. If the candidate explicitly changes an earlier answer, replace the saved value and use the newest direct response going forward.
-- Preserve application-specific prose only when the candidate supplied it as a reusable answer or direction. Do not turn agent-generated, role-tailored essays into candidate facts.
-- Save only the supported fact transcribed from a screenshot or temporary attachment unless the candidate also designated the file as a reusable application document.
-- Keep the profile and supporting materials under the ignored `private/` path. Never store passwords, one-time codes, authentication tokens, government identifiers, financial-account data, or unrelated medical details.
-
-## Prompt for candidate direction
-
-After the material pass, inspect `Answers still requiring candidate direction` in `private/candidate-profile.md` and identify goal-specific ambiguity. If anything remains unresolved, ask the user once in a consolidated message before taking browser action.
-
-Before asking any candidate question, perform a source-first answer check:
-
-- Search `private/candidate-profile.md`, current task attachments, authorized materials under `private/`, and the profile's recorded source documents for a direct, unambiguous answer to that specific question. Read the relevant source completely when a partial search result lacks necessary context.
-- If the materials answer the question, save the supported response under **Persist candidate responses autonomously** and use it without asking the candidate. Ask only after the relevant materials have been exhausted and the answer remains missing, ambiguous, conflicting, plausibly stale, or requires a personal choice.
-- Repeat this source-first check when a new required question appears inside an application form; do not treat a browser-form question as automatically requiring user interruption.
-
-Ask only missing items, using this structure as applicable:
-
-1. What full street address and postal code should applications use?
-2. What is the earliest exact start date?
-3. What compensation answer should be used: a target/range, negotiable, or decline to state?
-4. What locations, remote arrangements, relocation, and travel are acceptable?
-5. What security-clearance, export-control, background-check, and drug-screen answers may be given?
-6. For voluntary demographic questions not already answered, should the agent provide specified answers or select **Decline to answer**?
-7. May personal references be provided, and if so, what are their details?
-8. Does the current goal need any narrower role, seniority, company, industry, or application-date criteria?
-
-- Explain that the user may answer `decline` or `leave unanswered` for any item; then skip applications that require that unresolved answer.
-- Follow **Persist candidate responses autonomously** for every new answer: save it immediately in `private/candidate-profile.md`, remove resolved items from the outstanding list, and record explicitly declined items so future runs do not ask again.
-- Do not infer an answer from indirect cues in the materials, location, browser profile, Handshake preferences, or prior form autofill. Carry a value from a reviewed source only when it is explicit and unambiguous.
-- Do not re-ask a resolved or declined question unless the user changes it, it is plausibly stale, or a goal introduces a materially different requirement.
-- If a new required question remains unresolved after the source-first answer check, block that job, continue with alternatives, and aggregate newly discovered questions for the user.
-
-## Launch Chrome and select sites
-
-1. Load and follow the available Chrome-capable browser-control skill before browser work. When `control-in-app-browser` is the available skill, follow its explicit Chrome selection path and obtain the `extension` browser binding.
-2. Require the Chrome plugin to be enabled, the extension to be installed in the active Chrome profile, and the extension status to be **Connected**. If Chrome control is unavailable, ask the user to complete that setup; do not fall back to the built-in browser, raw HTTP, standalone Playwright, a search connector, or Computer Use.
-3. Attempt the normal Chrome browser-client initialization first. Only if it fails with the exact error `Cannot redefine property: process` and the active Chrome plugin manifest reports version `26.707.71524`, read and follow `references/chrome-26.707.71524-process-workaround.md` completely. This is a version-specific, session-only workaround; never apply it proactively, for another error, or to another plugin version.
-4. Launch a distinct persistent Chrome extension binding for the run, give the task or tab group a descriptive name, and reuse that binding across goal continuations.
-5. Reuse or claim a matching open Chrome tab before creating a duplicate. Open the enabled site's `start_url` when no matching tab exists. Use the profile's existing signed-in session and never inspect or store credentials, cookies, local storage, passwords, or authentication tokens.
-6. Use enabled sites in `config/job-sites.json` for discovery, further restricted by the active goal. When the goal does not name a discovery source, use enabled sites by ascending `priority`; Handshake is the primary source. A verified external employer careers site or ATS reached while applying does not need its own discovery-site entry when the source configuration enables external application sites.
-7. Read the site's referenced instructions before interacting. For Handshake, read `references/handshake.md` completely.
-8. If the Chrome profile is signed out, ask the user to sign in in Chrome and tell you when it is ready. Do not switch browsers to bypass authentication.
-9. If a local file upload is blocked, ask the user to open **Chrome > Extensions > Manage Extensions**, select the Codex extension's **Details**, enable **Allow access to file URLs**, and then restart the Chrome task. Do not switch to the built-in browser, which cannot automate file uploads.
-10. Treat a goal that explicitly directs `$apply-to-jobs` to submit applications from a configured discovery source as authorization for ordinary application uploads and submissions both on that source and on verified external employer career or ATS sites used by those applications. The user has separately authorized uploading files they provide to matching job-application forms. Without an explicit submission goal, research may continue but stop before transmitting private data or submitting.
+1. Read `references/browser.md` completely before browser work and follow the available Chrome-control skill it identifies. Use the user's signed-in Chrome session for discovery, form completion, uploads, redirects, and confirmation checks.
+2. Read only the source-specific instructions selected for the run. Read `references/handshake.md` completely when Handshake is selected.
+3. Reuse a matching tab and persistent browser binding when possible. Leave unrelated account state, messages, profiles, preferences, and saved searches unchanged.
 
 ## Find eligible roles
 
-- Follow role, seniority, location, freshness, compensation, company, and discovery-source criteria stated in the goal.
-- Source roles primarily from Handshake. When `external_application_sites.enabled` is true, follow Handshake's job-specific **Apply**, employer website, or ATS links and navigate within the resulting official application site as needed to complete that position.
-- If an external link lands on an employer careers homepage or search page, locate only the same position using the Handshake company, title, location, or job identifier. Do not substitute another role or use an unrelated external job board unless the goal separately authorizes that discovery source.
-- If the goal contains only a count, derive role families and seniority from the private profile and resume. Do not hardcode one candidate's background into the skill.
-- Verify that each source posting is still open. On every external site, verify HTTPS, employer identity, title, location, and job identifier when present before transmitting data. Stop on mismatches, impersonation signals, payment requests, or requests for credentials or sensitive financial data unrelated to a normal application.
-- Compare start dates, graduation timing, work authorization, sponsorship, citizenship, and clearance requirements with the exact private-profile values. Skip conflicts and do not expose those values in logs or public artifacts.
-- Do not treat a location as proof of relocation willingness. Skip a role when a required location, travel, or relocation answer cannot be made from the goal or profile.
-- Before opening a form, check for a prior submission:
+- Follow the run's role, seniority, location, work-arrangement, freshness, compensation, company, industry, and source criteria. Derive reasonable role families from the private profile when the user supplies only a count, but do not hardcode one candidate's background into the skill.
+- Verify that each posting is open and that its employer, title, location, qualifications, and eligibility requirements match the candidate's saved facts and directions.
+- Follow a configured discovery source's job-specific application link to a verified employer career site or ATS when allowed. If it lands on a general careers page, locate only the same position by employer, title, location, or job identifier; do not silently substitute another role.
+- Stop on employer or job mismatches, impersonation signals, payment requests, credential requests, or financial-data requests unrelated to a normal application.
+- Check the tracker before opening a form. Prefer a stable provider job ID or canonical job URL; include location when only role metadata is available:
 
-  ```bash
-  python3 .agents/skills/apply-to-jobs/scripts/tracker.py check \
-    --url "https://employer.example/jobs/123" \
-    --company "Example" \
-    --title "Data Scientist"
-  ```
+```bash
+python3 "<skill-root>/scripts/tracker.py" \
+  --state "<workspace>/private/application-state.json" \
+  check --site "Handshake" --job-id "123" \
+  --url "https://app.joinhandshake.com/job-search/123" \
+  --company "Example" --title "Data Scientist" --location "Seattle, WA"
+```
+
+Treat `already_submitted: true` as a duplicate. Treat `possible_match` as a prompt to verify identifiers, not as proof that the role is a duplicate.
 
 ## Complete each application
 
-Use the Chrome extension for discovery, form completion, uploads, redirects, and confirmation checks. Follow the selected Chrome binding's documentation for snapshots, locators, confirmations, and tab cleanup. Do not substitute the built-in browser, Computer Use, or standalone browser automation.
-
 For each application:
 
-1. Verify the company, title, location, posting status, core qualifications, work-authorization language, and application URL.
-2. Fill only facts supported by the profile or source documents. Use the resume's dated employment history when sources conflict.
-3. Answer work-authorization, immigration, sponsorship, citizenship, and clearance questions exactly as saved in the private profile. If a required value is missing or ambiguous, perform the source-first answer check before blocking the application or asking the user; never infer it.
-4. Answer voluntary self-identification questions only when the private profile contains the user's explicit answer or instruction to decline. Do not infer demographic information.
-5. Tailor short written responses and cover-letter text to the role using only supported facts. Do not invent metrics, titles, dates, technologies, motivations, referrals, or personal stories.
-6. Upload relevant files supplied by the user through the Chrome extension without asking for upload permission again during an active submission goal. Inspect each file locally first, verify the company and role destination, and upload it only to a matching job-application form. Use the resume listed in the private profile by default; resolve document conflicts according to the private profile; upload cover letters, transcripts, or other files only when relevant. Do not upload these files to resume optimizers, public profiles, recruiter messages, or unrelated services.
-7. Review every answer before submission. Correct autofill errors, especially legal name, dates, degree names, sponsorship, phone number, and email.
-8. Submit when all required answers are supported and the form shows no unresolved error.
-9. Confirm success from the final page, confirmation number, or confirmation email. A click on **Submit** without confirmation does not count.
-10. Record the result immediately. A submitted record requires confirmation evidence:
+1. Verify the employer, title, location, posting status, core qualifications, eligibility language, and destination URL.
+2. Fill only facts supported by the candidate profile or authorized source documents. Never invent metrics, titles, dates, technologies, motivations, referrals, or personal stories.
+3. Perform the source-first answer check in `references/profile.md` whenever a form introduces a missing or ambiguous required answer. Ask the exact question only when the form cannot proceed safely; do not ask a broad category of hypothetical questions.
+4. Answer work authorization, immigration, sponsorship, citizenship, clearance, and voluntary self-identification questions exactly as explicitly saved or supplied. Never infer protected or sensitive answers.
+5. Tailor short prose using supported facts. Do not convert agent-authored, role-specific prose into durable candidate facts.
+6. Upload only authorized documents to the matching application form. Inspect each file locally and verify the employer and role immediately before uploading it.
+7. Review all answers before submission, especially identity, contact information, dates, education, work authorization, and document selection.
+8. Follow the selected submission mode. Submit automatically only when the run authorizes it, every required answer is supported, and the form shows no unresolved error.
+9. Confirm success from a final page or confirmation number. Use a confirmation email only when the user has separately authorized access to their email. A click on **Submit** without confirmation does not count.
+10. Record the result immediately, including the provider job ID and location when available:
 
-   ```bash
-   python3 .agents/skills/apply-to-jobs/scripts/tracker.py record \
-     --status submitted \
-     --site "Handshake" \
-     --company "Example" \
-     --title "Data Scientist" \
-     --url "https://employer.example/jobs/123" \
-     --confirmation "Application submitted page displayed"
-   ```
+```bash
+python3 "<skill-root>/scripts/tracker.py" \
+  --state "<workspace>/private/application-state.json" \
+  record --status submitted --site "Handshake" --job-id "123" \
+  --company "Example" --title "Data Scientist" --location "Seattle, WA" \
+  --url "https://app.joinhandshake.com/job-search/123" \
+  --confirmation "Application submitted page displayed"
+```
+
+The tracker maintains `private/successful-applications.json` as a private, read-only projection containing confirmed submissions from every run.
 
 ## Handle blockers without losing momentum
 
-- Never bypass a CAPTCHA, MFA challenge, anti-bot control, queue, rate limit, or site security measure. Ask whether the user wants to solve a displayed CAPTCHA and continue only after explicit confirmation.
-- Do not take timed assessments, coding tests, recorded interviews, or personality tests unless the goal explicitly includes them.
-- Accept ordinary privacy notices, truthful-application certifications, and electronic-signature acknowledgements needed for submission. Stop on unusual releases, arbitration choices, financial commitments, or terms unrelated to a normal job application.
-- When a required answer remains unknown after the source-first answer check, or a site needs user interaction, record the job as `blocked`, include a concise reason, and continue to another eligible role.
-- Record clearly ineligible, closed, duplicate, or poor-fit roles as `skipped` when retaining that history will prevent repeated work.
-- Aggregate questions and blockers for the user instead of interrupting after every job. Continue while other eligible applications remain.
+- Keep a CAPTCHA, MFA prompt, or other human-verification page open and ask the user to complete it directly in the named Chrome tab. Resume the same application afterward. Never automate, outsource, or bypass security controls.
+- Do not take timed assessments, coding tests, recorded interviews, or personality tests unless the user explicitly includes them.
+- Accept ordinary privacy notices, truthful-application certifications, and electronic-signature acknowledgements required for submission. Stop on unusual releases, arbitration choices, financial commitments, or terms unrelated to a normal application.
+- Record unresolved required answers or other retriable interruptions as `blocked` with a concise `--reason-code` and note, then continue while other eligible roles remain.
+- Record closed, ineligible, verified duplicate, or poor-fit roles as `skipped` when preserving that result prevents repeated work.
+- Batch nonurgent questions. Interrupt immediately only when the current page requires the user's direct action or all remaining work depends on one answer.
 
-Examples:
+## Keep the user oriented
 
-```bash
-python3 .agents/skills/apply-to-jobs/scripts/tracker.py record \
-  --status blocked --site "Handshake" --company "Example" --title "Analyst" \
-  --url "https://employer.example/jobs/456" \
-  --note "Street address is required"
-
-python3 .agents/skills/apply-to-jobs/scripts/tracker.py status
-```
+- Send a short progress update after every three confirmed submissions or any material event such as a sign-in request, human-verification handoff, source exhaustion, or repeated site failure.
+- State progress as confirmed submissions versus target, plus useful blocked or skipped counts. Do not expose private form answers.
+- When user action is required, name the site or tab, describe the exact action, and say what will resume afterward.
+- Before reporting completion, reconcile new profile answers and check tracker status one final time.
 
 ## Finish exactly at the target
 
-- Count only tracker records whose status is `submitted` in the current run.
 - Re-check tracker status before each new submission and stop when `remaining` is zero.
-- Report the confirmed application count, source site, companies and roles submitted, and any unresolved blockers without exposing private form data.
-- When the target is reached and goal tools are available, call `update_goal` with `status: complete`.
-- Mark the goal blocked only after the same blocking condition has persisted for at least three consecutive goal turns, no eligible alternative remains, and user input or an external state change is required.
-- If the user pauses or clears `/goal`, stop applying. Do not turn a job-application goal into an unbounded scheduled task.
-
-The tracker writes private state to `private/application-state.json` by default. Keep that file and all candidate documents out of version control.
+- Report the confirmed count, source sites, submitted companies and roles, and unresolved blockers without exposing private data.
+- When a relevant active goal exists, update it according to the goal tool contract. If the user pauses or cancels the run, stop applying and preserve resumable state.
+- Never turn a bounded request into an unbounded or scheduled application process.
