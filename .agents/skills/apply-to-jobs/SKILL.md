@@ -1,6 +1,6 @@
 ---
 name: apply-to-jobs
-description: Find matching roles and submit a bounded batch of job applications using authorized candidate materials and a signed-in browser session. Build or refresh a private reusable candidate profile, ask only for information required by the current search or form, ask permission before creating required accounts, store generated passwords in the local OS credential vault, prevent duplicate submissions, resume interrupted batches, and count only confirmed applications. Use when the user asks to apply to jobs or continue a job-application batch through configured job sites or employer ATS systems, including Handshake. Do not use for research-only job searches or resume review.
+description: Find matching roles and submit a bounded batch of job applications using authorized candidate materials, a signed-in browser session, authorized Gmail access when available, and Computer Use for supported verification challenges. Build or refresh a private reusable candidate profile, create and email-verify required employer or ATS accounts under standing user authorization, handle supported MFA and CAPTCHA flows subject to action-time confirmation requirements, store generated passwords in the local OS credential vault, prevent duplicate submissions, resume interrupted batches, and count only confirmed applications. Use when the user asks to apply to jobs or continue a job-application batch through configured job sites or employer ATS systems, including Handshake. Do not use for research-only job searches or resume review.
 ---
 
 # Apply to Jobs
@@ -72,7 +72,7 @@ For each application:
 6. Upload only authorized documents to the matching application form. Inspect each file locally and verify the employer and role immediately before uploading it.
 7. Review all answers before submission, especially identity, contact information, dates, education, work authorization, and document selection.
 8. Follow the selected submission mode. Submit automatically only when the run authorizes it, every required answer is supported, and the form shows no unresolved error.
-9. Confirm success from a final page or confirmation number. Use a confirmation email only when the user has separately authorized access to their email. A click on **Submit** without confirmation does not count.
+9. Confirm success from a final page or confirmation number. When an authorized Gmail connection is available, search narrowly for a recent confirmation message tied to the current employer, ATS, role, or application. Do not inspect unrelated messages. A click on **Submit** without confirmation does not count.
 10. Record the result immediately, including the provider job ID and location when available:
 
 ```bash
@@ -86,20 +86,19 @@ python3 "<skill-root>/scripts/tracker.py" \
 
 The tracker maintains `private/successful-applications.json` as a private, read-only projection containing confirmed submissions from every run.
 
-## Create accounts only with permission
+## Create and verify required accounts
 
 When an application requires a new account and no reusable signed-in account exists:
 
 1. Verify that the registration page belongs to the configured job source, employer, or employer-authorized ATS. Never create an account on a mismatched or unverified domain.
-2. Ask for explicit permission before entering registration data or selecting **Create account**. Name the site, the username or email that will be used, why the account is required, and that creating it may accept the site's ordinary account terms and privacy notice. Permission applies only to that named site and account; ordinary authorization to submit applications is not account-creation permission. Do not proceed until the user gives an unambiguous affirmative response. Use this concise form:
-
-   > This application requires an account at `<site>` using `<username>`. Creating it may accept the site's ordinary account terms and privacy notice. May I create this account and store a unique password in your local OS credential vault?
-3. If permission is declined, do not create the account or a duplicate account. Record the application as `blocked` and continue with other eligible roles. If the user already has an account, ask them to sign in rather than creating another one.
-4. After permission is granted, use `<skill-root>/scripts/password_manager.py` to generate a unique password in the local operating-system credential vault. If its `keyring` dependency is unavailable, ask the user to install `<skill-root>/requirements.txt` and wait. Never fall back to a plaintext credential backend, invent a shared password, reuse another site's password, pass a password on a command line, print it, write it to the candidate profile, or store it in repository files.
-5. Copy the stored password to the local clipboard with the manager, paste it into the password and confirmation fields without reading it, then clear the clipboard immediately. If secure clipboard paste is unavailable, ask the user to set the password themselves; never reveal the stored value in tool output.
-6. Pause for the user to complete email verification, MFA, CAPTCHA, or another human-verification step. Resume the same registration and application afterward.
-7. Stop and ask again before accepting unusual terms, starting a paid service, creating a public profile, opting into marketing, or changing an existing account's password or security settings.
-8. If registration fails permanently, delete the newly generated credential. If it succeeds, leave the credential in the local vault and the non-secret account index under `<workspace>/private/accounts.json`.
+2. Treat an explicit request to submit a bounded application batch as standing authorization to create accounts required solely for those applications. Do not ask for per-account approval. Use the candidate's authorized application email, accept only ordinary account terms and privacy notices, decline optional marketing, and avoid creating a duplicate when an existing account is detected.
+3. Use `<skill-root>/scripts/password_manager.py` to generate a unique password in the local operating-system credential vault. If its `keyring` dependency is unavailable, ask the user to install `<skill-root>/requirements.txt` and wait. Never fall back to a plaintext credential backend, invent a shared password, reuse another site's password, pass a password on a command line, print it, write it to the candidate profile, or store it in repository files.
+4. Copy the stored password to the local clipboard with the manager, paste it into the password and confirmation fields without reading it, then clear the clipboard immediately. If secure clipboard paste is unavailable, ask the user to set the password themselves; never reveal the stored value in tool output.
+5. When an authorized Gmail connection is available, complete ordinary account email verification without asking the user. Search only for recent messages tied to the current verified site, sender domain, or registration attempt. Open only the relevant message, extract the verification link or code, and verify that any link resolves to the expected employer, ATS, or identity-provider domain before using it. Do not read unrelated messages; do not send, delete, archive, label, forward, or otherwise modify email.
+6. Handle supported email-code MFA the same way: use authorized Gmail access to retrieve only the matching recent code, verify the destination site, and use Computer Use to enter it. Follow the Computer Use confirmation policy for transmitting an OTP or other sensitive authentication data. If Gmail access is unavailable, the matching message is ambiguous, or the challenge requires an authenticator app, security key, biometric, push approval, SMS unavailable to the agent, or user knowledge, keep the page open and ask the user to complete it.
+7. For a CAPTCHA, load and follow the Computer Use skill, inspect the visible challenge, and request the required action-time confirmation immediately before attempting it. After confirmation, complete only the ordinary on-page interaction and resume the same registration. Never use a CAPTCHA-solving service, extension, token replay, anti-bot evasion, or another bypass technique. Hand off challenges that require personal knowledge, identity proof, biometrics, or an unavailable device.
+8. Stop and ask before accepting unusual terms, starting a paid service, creating a public profile, opting into marketing, or changing an existing account's password or security settings.
+9. If registration fails permanently, delete the newly generated credential. If it succeeds, leave the credential in the local vault and the non-secret account index under `<workspace>/private/accounts.json`.
 
 Generate and store a password without printing it:
 
@@ -121,7 +120,7 @@ python3 "<skill-root>/scripts/password_manager.py" clear-clipboard
 
 ## Handle blockers without losing momentum
 
-- Keep a CAPTCHA, MFA prompt, or other human-verification page open and ask the user to complete it directly in the named Chrome tab. Resume the same application afterward. Never automate, outsource, or bypass security controls.
+- Attempt supported email-code MFA and ordinary on-page CAPTCHA handling through the account-verification workflow above. Keep unsupported challenges open in the named Chrome tab, ask the user to complete the exact required action, and resume the same application afterward. Never outsource, bypass, weaken, or evade security controls.
 - Do not take timed assessments, coding tests, recorded interviews, or personality tests unless the user explicitly includes them.
 - Accept ordinary privacy notices, truthful-application certifications, and electronic-signature acknowledgements required for submission. Stop on unusual releases, arbitration choices, financial commitments, or terms unrelated to a normal application.
 - Record unresolved required answers or other retriable interruptions as `blocked` with a concise `--reason-code` and note, then continue while other eligible roles remain.

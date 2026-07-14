@@ -23,10 +23,12 @@ Do not apply that workaround proactively, for another error, or to another plugi
 - Never upload candidate files to resume optimizers, public profiles, recruiter messages, unrelated services, or a mismatched application.
 - If Chrome cannot access a local file, ask the user to open **Chrome > Extensions > Manage Extensions**, select the Codex extension's **Details**, enable **Allow access to file URLs**, and restart the Chrome task.
 
-## Handle user interaction
+## Handle verification challenges
 
-- For CAPTCHA, MFA, or another human-verification challenge, keep the exact page open and identify the site or tab in the handoff. Ask the user to complete the challenge directly, then inspect and resume the same application.
-- Never automate, outsource, bypass, or manipulate security challenges, queues, rate limits, anti-bot controls, or challenge tokens.
+- Use an authorized Gmail connector to retrieve a recent email verification or MFA code only when it unambiguously matches the current verified employer or ATS flow. Use Computer Use to enter a supported code, following its confirmation policy for sensitive authentication data.
+- For CAPTCHA, load and follow the Computer Use skill. Inspect the visible challenge and request its mandatory action-time confirmation immediately before attempting the ordinary on-page interaction. Never use external solvers, extensions, token replay, anti-bot evasion, or another bypass technique.
+- Keep unsupported MFA, identity proof, security-key, biometric, device-approval, or personal-knowledge challenges open and identify the site or tab in the handoff. Ask the user to complete the exact action, then inspect and resume the same application.
+- Never manipulate queues, rate limits, anti-bot controls, or challenge tokens.
 - Preserve unrelated tabs and account state. Do not open messages, change profiles or preferences, save searches, or interact with unrelated features unless the user asks.
 
 ## Confirm submission
