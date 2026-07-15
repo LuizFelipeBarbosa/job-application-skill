@@ -31,6 +31,14 @@ SCHEMA_VERSION = 1
 SERVICE_PREFIX = "job-application-skill"
 DEFAULT_PASSWORD_LENGTH = 24
 PASSWORD_SYMBOLS = "!@#$%^&*()-_=+"
+SUPPORTED_OS_BACKENDS = {
+    "keyring.backends.macOS.Keyring",
+    "keyring.backends.Windows.WinVaultKeyring",
+    "keyring.backends.SecretService.Keyring",
+    "keyring.backends.kwallet.DBusKeyring",
+    "keyring.backends.kwallet.DBusKeyringKWallet4",
+    "keyring.backends.libsecret.Keyring",
+}
 
 
 def utc_now() -> str:
@@ -113,17 +121,17 @@ def save_metadata(path: Path, metadata: dict) -> None:
 def secure_keyring_backend():
     backend = keyring.get_keyring()
     backend_name = f"{backend.__class__.__module__}.{backend.__class__.__name__}"
-    lowered_name = backend_name.lower()
     try:
         priority = backend.priority
     except (AttributeError, RuntimeError) as error:
         raise SystemExit(f"Cannot initialize a secure credential vault: {error}") from error
 
-    insecure_markers = ("fail", "plaintext", "unencrypted")
-    if priority <= 0 or any(marker in lowered_name for marker in insecure_markers):
+    is_supported_os_backend = backend_name in SUPPORTED_OS_BACKENDS
+    if priority <= 0 or not is_supported_os_backend:
         raise SystemExit(
-            "No secure operating-system credential vault is available. "
-            "Configure a secure keyring backend; plaintext backends are not allowed."
+            f"Unsupported credential backend: {backend_name}. Configure a supported "
+            "operating-system vault; chained, plaintext, and third-party file backends "
+            "are not allowed."
         )
     return backend, backend_name
 
@@ -270,19 +278,44 @@ def delete_credential(args: argparse.Namespace, metadata: dict, metadata_path: P
     secure_keyring_backend()
     site = normalize_site(args.site)
     username = normalize_username(args.username)
+    service = credential_service(site)
     try:
-        keyring.delete_password(credential_service(site), username)
+        previous_password = keyring.get_password(service, username)
+    except KeyringError as error:
+        raise SystemExit(f"Cannot read from the credential vault: {error}") from error
+    if previous_password is None:
+        raise SystemExit("No password exists for this site and username.")
+
+    try:
+        keyring.delete_password(service, username)
     except PasswordDeleteError as error:
         raise SystemExit("No password exists for this site and username.") from error
     except KeyringError as error:
         raise SystemExit(f"Cannot delete from the credential vault: {error}") from error
 
-    metadata["accounts"] = [
-        account
-        for account in metadata["accounts"]
-        if not (account.get("site") == site and account.get("username") == username)
-    ]
-    save_metadata(metadata_path, metadata)
+    updated_metadata = {
+        **metadata,
+        "accounts": [
+            account
+            for account in metadata["accounts"]
+            if not (
+                account.get("site") == site and account.get("username") == username
+            )
+        ],
+    }
+    try:
+        save_metadata(metadata_path, updated_metadata)
+    except OSError as error:
+        try:
+            keyring.set_password(service, username, previous_password)
+        except KeyringError as rollback_error:
+            raise SystemExit(
+                "Cannot save private account metadata, and the deleted credential "
+                "could not be restored. Recreate the credential before continuing."
+            ) from rollback_error
+        raise SystemExit(
+            "Cannot save private account metadata; the credential was restored."
+        ) from error
     print_json({"deleted": True, "site": site, "username": username})
 
 

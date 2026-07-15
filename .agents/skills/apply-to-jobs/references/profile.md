@@ -26,7 +26,7 @@ Honor a saved retention preference on later runs without repeating the notice. U
 - Carry work authorization, sponsorship, citizenship, clearance, location, start-date, compensation, reference, screening, or voluntary self-identification answers only when the source states the candidate's current answer directly and unambiguously.
 - Prefer the newest user-supplied resume for dated employment history. Do not silently overwrite a direct saved answer. Record conflicting or plausibly stale values under `Conflicts requiring confirmation` and do not use them until resolved.
 - Never infer protected traits, demographic answers, disability or veteran status, citizenship, work authorization, sponsorship, clearance, relocation willingness, or sensitive answers from names, photos, schools, employers, locations, browser autofill, or indirect context.
-- Never store passwords, one-time codes, or authentication data in the candidate profile or any file. Store a password only in the operating-system credential vault through `scripts/password_manager.py` after the user explicitly authorizes creation of that specific account. Never store government identifiers, financial-account data, or unrelated medical details.
+- Never store passwords, one-time codes, or authentication data in the candidate profile or any file. Store a password only in the operating-system credential vault through `scripts/password_manager.py` when the bounded application run's standing account-creation authorization applies or the user separately authorizes the account. Never store government identifiers, financial-account data, or unrelated medical details.
 
 ## Persist explicit answers
 
@@ -35,11 +35,23 @@ Honor a saved retention preference on later runs without repeating the notice. U
 - Preserve an explicitly changed answer as the newest value. Do not re-ask a resolved or declined question unless the user changes it, it becomes plausibly stale, or the new run materially changes its meaning.
 - Store voluntary self-identification details only when the user explicitly provides them as reusable. A standing direction to decline may be stored without storing the underlying trait.
 - Preserve application-specific prose only when the user supplied it as a reusable answer. Do not save agent-generated tailored essays as candidate facts.
+- During a subagent-driven run, let only the coordinator write the candidate profile. Have workers read the current profile snapshot and report newly supplied answers or conflicts to the coordinator for reconciliation.
 - Before completing a run, reconcile explicit user responses and new or modified authorized sources that are not yet represented in the profile.
 
-## Ask progressively
+## Resolve answers automatically and ask last
 
-Before asking any question, search the profile and relevant authorized sources for a direct, current, unambiguous answer. Read the necessary source context rather than relying on an isolated text match.
+Before asking any question, attempt to answer it automatically in this order:
+
+1. Apply current user directions and direct, reusable saved answers.
+2. Search the profile and relevant authorized candidate sources for direct supporting facts. Read the necessary context rather than relying on an isolated text match.
+3. Derive an answer conservatively when the materials make it unambiguous. Calculate dates or years without rounding upward or double-counting overlaps; evaluate a qualification only against documented evidence; choose the least inflated supported proficiency or responsibility level.
+4. Use the live posting and form context to interpret what the employer is asking.
+5. For company-, role-, team-, product-, mission-, values-, or motivation-related questions, research the employer and role. Prefer the posting and official company pages, then current reliable sources when official material is insufficient. Verify the entity and paraphrase rather than copying.
+6. Compose concise role-specific prose by connecting verified employer facts to supported candidate experience, skills, projects, and stated goals. Express evidence-backed interest in the opportunity without inventing longstanding enthusiasm, firsthand product use, referrals, personal anecdotes, or candidate facts.
+
+An answer does not need to appear verbatim in a source when it follows reliably from supported facts. For example, calculate a conservative experience duration from documented dates, answer a minimum-qualification question from documented education or skills, and draft **Why this company?** from verified company work plus the candidate's relevant background. Company research may support employer context and prose, but never use it to manufacture candidate credentials, experiences, preferences, or sensitive personal facts.
+
+For a missing optional answer, leave the field blank or use a neutral **Prefer not to answer** or **Decline** option when the form allows it. Never infer protected traits, legal status, work authorization, sponsorship, citizenship, clearance, voluntary self-identification, or other sensitive answers. Do not infer material personal commitments such as relocation, travel, start date, or compensation unless authorized candidate materials or saved user directions directly support the response.
 
 Ask before discovery only when the answer materially determines a useful search, such as an otherwise unknown role family, location boundary, work arrangement, or essential eligibility constraint. Ask during an application only when the live form requires the answer and no supported value exists.
 

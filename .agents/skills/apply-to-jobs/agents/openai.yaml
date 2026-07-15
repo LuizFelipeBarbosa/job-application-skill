@@ -1,4 +1,4 @@
 interface:
   display_name: "Apply to Jobs"
-  short_description: "Find, submit, and verify job applications"
-  default_prompt: "Use $apply-to-jobs to apply to 5 matching roles using my saved profile and handle supported account verification with Gmail and Computer Use."
+  short_description: "Apply in parallel with automatic answers"
+  default_prompt: "Use $apply-to-jobs with parallel application subagents to apply to 5 matching roles, automatically answer questions from my materials and company research, and keep other applications moving when one needs my input."
