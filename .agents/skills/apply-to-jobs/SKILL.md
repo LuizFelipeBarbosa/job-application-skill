@@ -56,6 +56,7 @@ When subagent tools are available and the target exceeds one application, use th
 1. Read `references/browser.md` completely before browser work and follow the available Chrome-control skill it identifies. Use the user's signed-in Chrome session for discovery, form completion, uploads, redirects, and confirmation checks.
 2. Read only the source-specific instructions selected for the run. Read `references/handshake.md` completely when Handshake is selected.
 3. Reuse a matching tab and persistent browser binding when possible. Leave unrelated account state, messages, profiles, preferences, and saved searches unchanged.
+4. Close application tabs whose submissions are already confirmed in the tracker, including a dedicated application tab after its `submitted` status is recorded successfully. Keep tabs for `in_progress` or `blocked` applications open so they remain resumable, and do not close unrelated tabs.
 
 ## Find eligible roles
 
