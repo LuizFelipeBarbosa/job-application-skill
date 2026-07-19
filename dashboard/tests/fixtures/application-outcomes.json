@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "applications": {
+    "submitted-one": {
+      "stage": "screening",
+      "stage_updated_at": "2026-07-16T17:00:00+00:00",
+      "next_action": "Prepare for recruiter screen",
+      "next_action_due_at": "2026-07-20T17:00:00+00:00",
+      "notes": "Synthetic fixture note",
+      "stage_history": [
+        { "stage": "applied", "at": "2026-07-14T17:00:00+00:00" },
+        { "stage": "screening", "at": "2026-07-16T17:00:00+00:00" }
+      ]
+    }
+  }
+}

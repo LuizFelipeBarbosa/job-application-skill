@@ -4,37 +4,103 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from collections.abc import Iterator
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
+
+from job_identity import (
+    add_identity,
+    build_identity,
+    canonicalize_url,
+    identity_key,
+    identities_match,
+    normalize_identities,
+    normalize_text,
+)
 
 
 SCHEMA_VERSION = 1
 SUCCESSFUL_APPLICATIONS_SCHEMA_VERSION = 1
-TRACKING_QUERY_KEYS = {
-    "gh_src",
-    "lever-source",
-    "ref",
-    "source",
-    "sourceid",
-    "utm_campaign",
-    "utm_content",
-    "utm_medium",
-    "utm_source",
-    "utm_term",
-}
+RUN_KINDS = ("application", "recovery")
 RECORD_STATUSES = (
     "in_progress",
     "blocked",
     "ready_to_submit",
     "submitted",
     "skipped",
+)
+REQUIRED_PREFLIGHT_CHECKS = {
+    "identity",
+    "posting_open",
+    "timing",
+    "work_authorization",
+    "minimum_qualifications",
+}
+PREFLIGHT_RESULTS = {"pass", "fail", "unknown"}
+PREFERENCE_RESULTS = {"match", "mismatch", "unknown"}
+REASON_CATEGORIES = (
+    "duplicate",
+    "posting_unavailable",
+    "eligibility",
+    "hard_constraint",
+    "safety",
+    "target_reached",
+    "technical",
+    "candidate_input",
+    "user_action",
+    "policy",
+    "employer_restriction",
+    "other",
+)
+DECISION_STRENGTHS = ("hard", "soft", "unknown", "not_applicable")
+APPLICATION_STAGES = (
+    "unknown",
+    "discovered",
+    "preflight",
+    "form_opened",
+    "data_entered",
+    "documents_uploaded",
+    "ready_to_submit",
+    "submission_attempted",
+    "confirmed",
+)
+TRANSMITTED_DATA_TYPES = (
+    "identity",
+    "contact",
+    "education",
+    "employment",
+    "documents",
+    "screening_answers",
+    "other",
+)
+VERIFICATION_TYPES = (
+    "email_code",
+    "captcha",
+    "password",
+    "account_recovery",
+    "mfa",
+    "passkey",
+)
+VERIFICATION_EVENTS = (
+    "requested",
+    "ready",
+    "attempted",
+    "succeeded",
+    "failed",
+    "expired",
+    "user_action_required",
+)
+SECRET_ARGUMENT_PATTERN = re.compile(
+    r"(?:password|passcode|otp|one.?time|secret|token|security.?code|verification.?code)",
+    re.IGNORECASE,
 )
 RESERVED_STATUSES = {"in_progress", "ready_to_submit"}
 ALLOWED_TRANSITIONS = {
@@ -80,6 +146,10 @@ def transition_from_legacy_application(application: dict) -> dict:
         "from": None,
         "to": application.get("status", "skipped"),
         "reason_code": application.get("reason_code", ""),
+        "reason_category": application.get("reason_category", ""),
+        "decision_strength": application.get("decision_strength", "unknown"),
+        "application_stage": application.get("application_stage", "unknown"),
+        "transmitted_data": application.get("transmitted_data", []),
         "note": application.get("note", ""),
         "worker": application.get("worker", ""),
         "browser_session": application.get("browser_session", ""),
@@ -97,11 +167,21 @@ def normalize_application(application: dict) -> dict:
     normalized.setdefault("site", "")
     normalized.setdefault("location", "")
     normalized.setdefault("url", "")
-    if not normalized.get("canonical_url"):
-        normalized["canonical_url"] = canonicalize_url(normalized["url"])
-    normalized.setdefault("job_id", "")
+    normalized["identities"] = normalize_identities(normalized)
+    primary_identity = normalized["identities"][-1] if normalized["identities"] else {}
+    normalized["canonical_url"] = primary_identity.get(
+        "canonical_url", canonicalize_url(normalized["url"])
+    )
+    normalized["job_id"] = normalized.get("job_id") or primary_identity.get("job_id", "")
+    normalized["site_key"] = primary_identity.get("site_key", "")
     normalized.setdefault("confirmation", "")
     normalized.setdefault("reason_code", "")
+    normalized.setdefault("reason_category", "")
+    normalized.setdefault("decision_strength", "unknown")
+    normalized.setdefault("application_stage", "unknown")
+    normalized.setdefault("transmitted_data", [])
+    normalized.setdefault("preflight_checks", {})
+    normalized.setdefault("preference_checks", {})
     normalized.setdefault("note", "")
     normalized.setdefault("worker", "")
     normalized.setdefault("browser_session", "")
@@ -111,6 +191,11 @@ def normalize_application(application: dict) -> dict:
     normalized.setdefault("evidence_refs", [])
     normalized.setdefault("inferred_answer_count", 0)
     normalized.setdefault("generated_answer_count", 0)
+    normalized.setdefault("verification_type", "")
+    normalized.setdefault("verification_events", [])
+    normalized.setdefault("recovery_of", "")
+    normalized.setdefault("resolved_by", "")
+    normalized.setdefault("resolved_at", "")
     if not normalized.get("transitions"):
         normalized["transitions"] = [transition_from_legacy_application(normalized)]
     return normalized
@@ -125,6 +210,12 @@ def merge_application_lifecycle(current: dict, later: dict) -> None:
         "status",
         "confirmation",
         "reason_code",
+        "reason_category",
+        "decision_strength",
+        "application_stage",
+        "transmitted_data",
+        "preflight_checks",
+        "preference_checks",
         "note",
         "next_action",
         "inferred_answer_count",
@@ -142,17 +233,28 @@ def merge_application_lifecycle(current: dict, later: dict) -> None:
         "worker",
         "browser_session",
         "profile_signature",
+        "site_key",
+        "recovery_of",
+        "resolved_by",
+        "resolved_at",
     ):
         if later.get(field):
             current[field] = later[field]
-    for field in ("document_signatures", "evidence_refs"):
+    for field in (
+        "document_signatures",
+        "evidence_refs",
+        "verification_events",
+    ):
         if later.get(field):
             current[field] = later[field]
+    for identity in later.get("identities", []):
+        add_identity(current["identities"], identity)
 
 
 def normalize_state(state: dict) -> dict:
     """Upgrade append-only application events into one lifecycle per run and job."""
     for run in state["runs"]:
+        run.setdefault("kind", "application")
         applications = []
         for raw_application in run.get("applications", []):
             application = normalize_application(raw_application)
@@ -242,35 +344,6 @@ def save_successful_applications(path: Path, state: dict) -> None:
     )
 
 
-def normalize_text(value: str | None) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip() if value else ""
-
-
-def canonicalize_url(value: str | None) -> str:
-    if not value:
-        return ""
-
-    parts = urlsplit(value.strip())
-    hostname = (parts.hostname or "").lower()
-    if hostname.startswith("www."):
-        hostname = hostname[4:]
-    netloc = hostname
-    if parts.port:
-        netloc = f"{netloc}:{parts.port}"
-
-    filtered_query = [
-        (key, item)
-        for key, item in parse_qsl(parts.query, keep_blank_values=True)
-        if key.lower() not in TRACKING_QUERY_KEYS and not key.lower().startswith("utm_")
-    ]
-    path = parts.path.rstrip("/") or "/"
-    if hostname == "app.joinhandshake.com" and re.fullmatch(r"/job-search/\d+", path):
-        filtered_query = []
-    return urlunsplit(
-        (parts.scheme.lower(), netloc, path, urlencode(sorted(filtered_query)), "")
-    )
-
-
 def validate_url(value: str | None) -> str:
     url = (value or "").strip()
     if not url:
@@ -303,6 +376,7 @@ def run_summary(run: dict) -> dict:
     remaining = max(run["target"] - submitted, 0)
     return {
         "run_id": run["id"],
+        "kind": run.get("kind", "application"),
         "status": run["status"],
         "objective": run["objective"],
         "target": run["target"],
@@ -316,7 +390,10 @@ def run_summary(run: dict) -> dict:
         "ready_to_submit": sum(
             item["status"] == "ready_to_submit" for item in run["applications"]
         ),
-        "blocked": sum(item["status"] == "blocked" for item in run["applications"]),
+        "blocked": sum(
+            item["status"] == "blocked" and not item.get("resolved_by")
+            for item in run["applications"]
+        ),
         "skipped": sum(item["status"] == "skipped" for item in run["applications"]),
     }
 
@@ -331,6 +408,10 @@ def application_identity(application: dict) -> dict:
         "url": application.get("url", ""),
         "site": application.get("site", ""),
         "job_id": application.get("job_id", ""),
+        "site_key": application.get("site_key", ""),
+        "status": application.get("status", ""),
+        "reason_category": application.get("reason_category", ""),
+        "reason_code": application.get("reason_code", ""),
         "recorded_at": application["recorded_at"],
     }
 
@@ -342,6 +423,12 @@ def iter_submitted_applications(state: dict) -> Iterator[dict]:
                 yield {"run_id": run["id"], **application}
 
 
+def iter_applications(state: dict) -> Iterator[dict]:
+    for run in state["runs"]:
+        for application in run["applications"]:
+            yield {"run_id": run["id"], **application}
+
+
 def exact_match(
     application: dict,
     *,
@@ -349,15 +436,31 @@ def exact_match(
     site: str | None,
     job_id: str | None,
 ) -> bool:
-    same_url = bool(
-        canonical_url and application.get("canonical_url") == canonical_url
+    requested = build_identity(site=site, url=canonical_url, job_id=job_id)
+    return any(
+        identities_match(identity, requested)
+        for identity in normalize_identities(application)
     )
-    same_provider_job = bool(
-        has_provider_identifier(site, job_id)
-        and normalize_text(application.get("site")) == normalize_text(site)
-        and normalize_text(application.get("job_id")) == normalize_text(job_id)
-    )
-    return same_url or same_provider_job
+
+
+def find_exact_evaluations(
+    state: dict,
+    *,
+    url: str | None,
+    site: str | None,
+    job_id: str | None,
+) -> list[dict]:
+    canonical_url = canonicalize_url(url)
+    return [
+        application_identity(application)
+        for application in iter_applications(state)
+        if exact_match(
+            application,
+            canonical_url=canonical_url,
+            site=site,
+            job_id=job_id,
+        )
+    ]
 
 
 def find_prior_submission(
@@ -367,16 +470,16 @@ def find_prior_submission(
     site: str | None,
     job_id: str | None,
 ) -> dict | None:
-    canonical_url = canonicalize_url(url)
-    for application in iter_submitted_applications(state):
-        if exact_match(
-            application,
-            canonical_url=canonical_url,
-            site=site,
-            job_id=job_id,
-        ):
-            return application_identity(application)
-    return None
+    return next(
+        (
+            application
+            for application in find_exact_evaluations(
+                state, url=url, site=site, job_id=job_id
+            )
+            if application["status"] == "submitted"
+        ),
+        None,
+    )
 
 
 def find_possible_submission(
@@ -444,6 +547,24 @@ def find_run_application(
     )
 
 
+def find_application_by_id(state: dict, application_id: str) -> dict | None:
+    for run in state["runs"]:
+        for application in run["applications"]:
+            if application.get("id") == application_id:
+                return application
+    return None
+
+
+def parse_timestamp(value: str, *, field_name: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise SystemExit(f"{field_name} must be an ISO-8601 timestamp.") from error
+    if parsed.tzinfo is None:
+        raise SystemExit(f"{field_name} must include a UTC offset.")
+    return parsed.isoformat(timespec="seconds")
+
+
 def print_json(value: dict) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
@@ -457,6 +578,7 @@ def start_run(args: argparse.Namespace, state: dict, state_path: Path) -> None:
     if active_run:
         same_run = (
             active_run["target"] == args.target
+            and active_run.get("kind", "application") == args.kind
             and normalize_text(active_run["objective"]) == normalize_text(objective)
         )
         if not same_run:
@@ -475,6 +597,7 @@ def start_run(args: argparse.Namespace, state: dict, state_path: Path) -> None:
             f"{uuid4().hex[:8]}"
         ),
         "objective": objective,
+        "kind": args.kind,
         "target": args.target,
         "status": "active",
         "created_at": utc_now(),
@@ -508,6 +631,9 @@ def check_submission(args: argparse.Namespace, state: dict) -> None:
     prior = find_prior_submission(
         state, url=url, site=args.site, job_id=args.job_id
     )
+    exact_evaluations = find_exact_evaluations(
+        state, url=url, site=args.site, job_id=args.job_id
+    )
     possible = None
     if prior is None:
         possible = find_possible_submission(
@@ -520,6 +646,7 @@ def check_submission(args: argparse.Namespace, state: dict) -> None:
         {
             "already_submitted": prior is not None,
             "match": prior,
+            "exact_evaluations": exact_evaluations,
             "possible_match": possible,
         }
     )
@@ -532,12 +659,38 @@ def nonnegative_integer(value: str) -> int:
     return number
 
 
+def parse_named_results(
+    values: list[str],
+    *,
+    allowed_results: set[str],
+    flag_name: str,
+) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for value in values:
+        name, separator, result = value.partition("=")
+        normalized_name = normalize_text(name).replace(" ", "_")
+        normalized_result = normalize_text(result).replace(" ", "_")
+        if not separator or not normalized_name or normalized_result not in allowed_results:
+            choices = ", ".join(sorted(allowed_results))
+            raise SystemExit(
+                f"{flag_name} must use name=result with a result of: {choices}."
+            )
+        parsed[normalized_name] = normalized_result
+    return parsed
+
+
+def validate_reason_code(value: str) -> None:
+    if value and not re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", value):
+        raise SystemExit("--reason-code must be lower-case snake_case.")
+
+
 def validate_record_request(
     args: argparse.Namespace,
     *,
     existing: dict | None,
     url: str,
-) -> None:
+) -> list[str]:
+    warnings: list[str] = []
     if not args.company.strip() or not args.title.strip():
         raise SystemExit("Company and title must not be empty.")
     if existing is None and not (
@@ -554,17 +707,68 @@ def validate_record_request(
         raise SystemExit(
             "A submitted application must transition from an active reservation."
         )
+    reason_code = args.reason_code.strip()
+    validate_reason_code(reason_code)
+    if args.status in {"blocked", "skipped"}:
+        if not args.reason_category.strip() or not reason_code or not args.note.strip():
+            raise SystemExit(
+                f"A {args.status} application requires --reason-category, "
+                "--reason-code, and --note."
+            )
+        if args.application_stage == "unknown":
+            raise SystemExit(
+                f"A {args.status} application requires a known --application-stage."
+            )
     if args.status == "blocked":
-        if not args.reason_code.strip() or not args.note.strip():
-            raise SystemExit("A blocked application requires --reason-code and --note.")
         if not args.browser_session.strip() or not args.next_action.strip():
             raise SystemExit(
                 "A blocked application requires --browser-session and --next-action."
             )
+    if args.status == "skipped":
+        if args.decision_strength in {"soft", "unknown"}:
+            raise SystemExit(
+                "A job cannot be skipped solely for a soft or unknown preference."
+            )
+        if args.reason_category != "target_reached" and not (
+            args.evidence_ref or (existing or {}).get("evidence_refs")
+        ):
+            raise SystemExit("A skipped application requires at least one --evidence-ref.")
     if args.status == "in_progress" and not (
         args.worker.strip() or (existing and existing.get("worker"))
     ):
         raise SystemExit("An in-progress application requires --worker.")
+
+    preflight_checks = parse_named_results(
+        args.preflight_check,
+        allowed_results=PREFLIGHT_RESULTS,
+        flag_name="--preflight-check",
+    ) or (existing or {}).get("preflight_checks", {})
+    parse_named_results(
+        args.preference_check,
+        allowed_results=PREFERENCE_RESULTS,
+        flag_name="--preference-check",
+    )
+    if args.status == "in_progress":
+        missing = sorted(REQUIRED_PREFLIGHT_CHECKS - set(preflight_checks))
+        if missing:
+            warnings.append(
+                "Reservation is missing preflight checks: " + ", ".join(missing)
+            )
+        failed = sorted(
+            name for name, result in preflight_checks.items() if result == "fail"
+        )
+        if failed and not args.allow_hard_mismatch:
+            raise SystemExit(
+                "Hard preflight checks failed: "
+                + ", ".join(failed)
+                + ". Use --allow-hard-mismatch only after an explicit review."
+            )
+        if failed and args.allow_hard_mismatch and not (
+            args.note.strip() and args.evidence_ref
+        ):
+            raise SystemExit(
+                "A hard-mismatch override requires --note and --evidence-ref."
+            )
 
     inferred_count = (
         args.inferred_answer_count
@@ -581,6 +785,7 @@ def validate_record_request(
         raise SystemExit(
             "Inferred or generated answers require at least one --evidence-ref."
         )
+    return warnings
 
 
 def validate_transition(existing: dict | None, args: argparse.Namespace) -> None:
@@ -639,6 +844,28 @@ def create_or_update_application(
         application.setdefault("transitions", [])
 
     previous_status = application.get("status")
+    preflight_checks = dict(application.get("preflight_checks", {}))
+    preflight_checks.update(
+        parse_named_results(
+            args.preflight_check,
+            allowed_results=PREFLIGHT_RESULTS,
+            flag_name="--preflight-check",
+        )
+    )
+    preference_checks = dict(application.get("preference_checks", {}))
+    preference_checks.update(
+        parse_named_results(
+            args.preference_check,
+            allowed_results=PREFERENCE_RESULTS,
+            flag_name="--preference-check",
+        )
+    )
+    application_stage = (
+        "confirmed"
+        if args.status == "submitted"
+        else args.application_stage or application.get("application_stage", "unknown")
+    )
+    reason_is_current = args.status in {"blocked", "skipped"}
     application.update(
         {
             "recorded_at": now,
@@ -651,7 +878,16 @@ def create_or_update_application(
             "url": url or application.get("url", ""),
             "job_id": args.job_id.strip() or application.get("job_id", ""),
             "confirmation": args.confirmation.strip(),
-            "reason_code": args.reason_code.strip() if args.status == "blocked" else "",
+            "reason_code": args.reason_code.strip() if reason_is_current else "",
+            "reason_category": (
+                args.reason_category.strip() if reason_is_current else ""
+            ),
+            "decision_strength": args.decision_strength,
+            "application_stage": application_stage,
+            "transmitted_data": args.transmitted_data
+            or application.get("transmitted_data", []),
+            "preflight_checks": preflight_checks,
+            "preference_checks": preference_checks,
             "note": args.note.strip(),
             "worker": args.worker.strip() or application.get("worker", ""),
             "browser_session": args.browser_session.strip()
@@ -672,15 +908,30 @@ def create_or_update_application(
                 if args.generated_answer_count is not None
                 else application.get("generated_answer_count", 0)
             ),
+            "verification_type": args.verification_type
+            or application.get("verification_type", ""),
         }
     )
-    application["canonical_url"] = canonicalize_url(application["url"])
+    application.setdefault("identities", normalize_identities(application))
+    new_identity = build_identity(
+        site=application["site"],
+        url=application["url"],
+        job_id=application["job_id"],
+    )
+    add_identity(application["identities"], new_identity)
+    application["canonical_url"] = new_identity["canonical_url"]
+    application["job_id"] = new_identity["job_id"]
+    application["site_key"] = new_identity["site_key"]
     application["transitions"].append(
         {
             "at": now,
             "from": previous_status,
             "to": args.status,
             "reason_code": application["reason_code"],
+            "reason_category": application["reason_category"],
+            "decision_strength": application["decision_strength"],
+            "application_stage": application["application_stage"],
+            "transmitted_data": application["transmitted_data"],
             "note": application["note"],
             "worker": application["worker"],
             "browser_session": application["browser_session"],
@@ -707,7 +958,7 @@ def record_application(
         site=args.site,
         job_id=args.job_id,
     )
-    validate_record_request(args, existing=existing, url=url)
+    warnings = validate_record_request(args, existing=existing, url=url)
 
     identity_url = url or (existing or {}).get("url", "")
     identity_site = args.site or (existing or {}).get("site", "")
@@ -746,6 +997,11 @@ def record_application(
         existing=existing,
         url=url,
     )
+    if application["status"] == "submitted" and application.get("recovery_of"):
+        source = find_application_by_id(state, application["recovery_of"])
+        if source is not None:
+            source["resolved_by"] = application["id"]
+            source["resolved_at"] = utc_now()
     summary = run_summary(run)
     if summary["remaining"] == 0:
         run["status"] = "complete"
@@ -755,7 +1011,277 @@ def record_application(
 
     save_state(state_path, state)
     save_successful_applications(successful_applications_file, state)
-    print_json({"recorded": application, "run": summary})
+    print_json({"recorded": application, "run": summary, "warnings": warnings})
+
+
+def recover_application(
+    args: argparse.Namespace,
+    state: dict,
+    state_path: Path,
+    successful_applications_file: Path,
+) -> None:
+    run = get_active_run(state, require_active=True)
+    assert run is not None
+    if run.get("kind", "application") != "recovery":
+        raise SystemExit("Blocked applications require an active recovery run.")
+
+    source = find_application_by_id(state, args.source_application_id.strip())
+    if source is None:
+        raise SystemExit("The blocked source application does not exist.")
+    if source.get("status") != "blocked" or source.get("resolved_by"):
+        raise SystemExit("Recovery requires an unresolved blocked application.")
+    if any(
+        application.get("recovery_of") == source["id"]
+        for application in run["applications"]
+    ):
+        raise SystemExit("This blocked application is already in the recovery run.")
+
+    prior = find_prior_submission(
+        state,
+        url=source.get("url"),
+        site=source.get("site"),
+        job_id=source.get("job_id"),
+    )
+    if prior is not None:
+        raise SystemExit("This blocked role has already been submitted successfully.")
+
+    preflight_checks = parse_named_results(
+        args.preflight_check,
+        allowed_results=PREFLIGHT_RESULTS,
+        flag_name="--preflight-check",
+    )
+    for required in ("identity", "posting_open"):
+        if preflight_checks.get(required) != "pass":
+            raise SystemExit(
+                f"Recovery requires --preflight-check {required}=pass."
+            )
+    failed = sorted(
+        name for name, result in preflight_checks.items() if result == "fail"
+    )
+    if failed and not args.allow_hard_mismatch:
+        raise SystemExit("Recovery preflight failed: " + ", ".join(failed))
+    if failed and not (args.note.strip() and args.evidence_ref):
+        raise SystemExit(
+            "A recovery hard-mismatch override requires --note and --evidence-ref."
+        )
+    warnings = []
+    missing = sorted(REQUIRED_PREFLIGHT_CHECKS - set(preflight_checks))
+    if missing:
+        warnings.append("Recovery preflight is missing: " + ", ".join(missing))
+
+    validate_capacity(run, None, "in_progress")
+    now = utc_now()
+    application = normalize_application(
+        {
+            "id": uuid4().hex,
+            "recorded_at": now,
+            "created_at": now,
+            "updated_at": now,
+            "status": "in_progress",
+            "site": source.get("site", ""),
+            "company": source.get("company", ""),
+            "title": source.get("title", ""),
+            "location": source.get("location", ""),
+            "url": source.get("url", ""),
+            "job_id": source.get("job_id", ""),
+            "identities": deepcopy(source.get("identities", [])),
+            "worker": args.worker.strip(),
+            "browser_session": args.browser_session.strip(),
+            "note": args.note.strip(),
+            "evidence_refs": args.evidence_ref
+            or deepcopy(source.get("evidence_refs", [])),
+            "preflight_checks": preflight_checks,
+            "preference_checks": parse_named_results(
+                args.preference_check,
+                allowed_results=PREFERENCE_RESULTS,
+                flag_name="--preference-check",
+            ),
+            "decision_strength": "not_applicable",
+            "application_stage": "preflight",
+            "recovery_of": source["id"],
+            "transitions": [
+                {
+                    "at": now,
+                    "from": None,
+                    "to": "in_progress",
+                    "reason_code": "",
+                    "reason_category": "",
+                    "decision_strength": "not_applicable",
+                    "application_stage": "preflight",
+                    "transmitted_data": [],
+                    "note": args.note.strip(),
+                    "worker": args.worker.strip(),
+                    "browser_session": args.browser_session.strip(),
+                    "next_action": "",
+                }
+            ],
+        }
+    )
+    if not application["worker"] or not application["browser_session"]:
+        raise SystemExit("Recovery requires --worker and --browser-session.")
+    run["applications"].append(application)
+    save_state(state_path, state)
+    save_successful_applications(successful_applications_file, state)
+    print_json(
+        {"recovered": application, "run": run_summary(run), "warnings": warnings}
+    )
+
+
+def verification_event(
+    args: argparse.Namespace,
+    state: dict,
+    state_path: Path,
+) -> None:
+    run = get_active_run(state, require_active=True)
+    assert run is not None
+    if run.get("kind", "application") != "recovery":
+        raise SystemExit("Verification events require an active recovery run.")
+    application = find_run_application(
+        run,
+        application_id=args.application_id,
+        url=None,
+        site=None,
+        job_id=None,
+    )
+    assert application is not None
+    if application.get("status") not in RESERVED_STATUSES:
+        raise SystemExit("Verification requires an active recovery reservation.")
+
+    verification_type = args.type
+    browser_session = args.browser_session.strip()
+    if not browser_session:
+        raise SystemExit("Verification events require --browser-session.")
+    lock = state.get("verification_lock")
+    if lock and lock.get("application_id") != application["id"]:
+        raise SystemExit(
+            "Another application holds the serialized verification lock."
+        )
+
+    events = application.setdefault("verification_events", [])
+    same_type_events = [
+        event for event in events if event.get("type") == verification_type
+    ]
+    attempts = sum(event.get("event") == "attempted" for event in same_type_events)
+    last_event = same_type_events[-1] if same_type_events else None
+    now = utc_now()
+    message_received_at = ""
+    if args.message_received_at:
+        message_received_at = parse_timestamp(
+            args.message_received_at, field_name="--message-received-at"
+        )
+
+    if args.event == "requested":
+        if last_event and last_event.get("event") not in {
+            "failed",
+            "expired",
+            "user_action_required",
+        }:
+            raise SystemExit("A new verification request requires the prior flow to end.")
+        state["verification_lock"] = {
+            "application_id": application["id"],
+            "type": verification_type,
+            "browser_session": browser_session,
+            "acquired_at": now,
+        }
+    else:
+        if not lock or lock.get("application_id") != application["id"]:
+            raise SystemExit("Request verification before recording this event.")
+        if lock.get("browser_session") != browser_session:
+            raise SystemExit("Verification must stay in the requesting browser session.")
+
+    if verification_type == "email_code":
+        if args.event == "ready":
+            requested = next(
+                (
+                    event
+                    for event in reversed(same_type_events)
+                    if event.get("event") == "requested"
+                ),
+                None,
+            )
+            if requested is None or not message_received_at:
+                raise SystemExit(
+                    "Email-code readiness requires a request and "
+                    "--message-received-at."
+                )
+            if datetime.fromisoformat(message_received_at) <= datetime.fromisoformat(
+                requested["at"]
+            ):
+                raise SystemExit("The verification message predates the current request.")
+        if args.event == "attempted":
+            if not last_event or last_event.get("event") != "ready":
+                raise SystemExit("Enter only a code marked ready for this session.")
+            if attempts >= 2:
+                raise SystemExit("Email-code verification allows only one clean retry.")
+            attempts += 1
+        if args.event in {"succeeded", "failed"} and (
+            not last_event or last_event.get("event") != "attempted"
+        ):
+            raise SystemExit("Record a verification attempt before its result.")
+
+    event = {
+        "at": now,
+        "type": verification_type,
+        "event": args.event,
+        "browser_session": browser_session,
+        "attempt_number": attempts,
+    }
+    if message_received_at:
+        event["message_received_at"] = message_received_at
+    events.append(event)
+    application["verification_type"] = verification_type
+    application["updated_at"] = now
+
+    terminal_event = args.event in {
+        "succeeded",
+        "expired",
+        "user_action_required",
+    }
+    second_email_failure = (
+        verification_type == "email_code" and args.event == "failed" and attempts >= 2
+    )
+    if second_email_failure:
+        application.update(
+            {
+                "status": "blocked",
+                "reason_category": "technical",
+                "reason_code": "session_bound_code_rejected",
+                "decision_strength": "not_applicable",
+                "application_stage": "form_opened",
+                "note": "Two session-bound email verification attempts were rejected.",
+                "next_action": "Resume only after the provider resets verification.",
+                "browser_session": browser_session,
+            }
+        )
+        application.setdefault("transitions", []).append(
+            {
+                "at": now,
+                "from": "in_progress",
+                "to": "blocked",
+                "reason_category": "technical",
+                "reason_code": "session_bound_code_rejected",
+                "decision_strength": "not_applicable",
+                "application_stage": "form_opened",
+                "transmitted_data": application.get("transmitted_data", []),
+                "note": application["note"],
+                "worker": application.get("worker", ""),
+                "browser_session": browser_session,
+                "next_action": application["next_action"],
+            }
+        )
+        terminal_event = True
+    if terminal_event:
+        state.pop("verification_lock", None)
+
+    save_state(state_path, state)
+    print_json(
+        {
+            "recorded_event": event,
+            "application_id": application["id"],
+            "status": application["status"],
+            "verification_locked": "verification_lock" in state,
+        }
+    )
 
 
 def abandon_run(args: argparse.Namespace, state: dict, state_path: Path) -> None:
@@ -856,6 +1382,237 @@ def amend_run(args: argparse.Namespace, state: dict, state_path: Path) -> None:
     print_json({"amended": changed, "previous": previous, **run_summary(run)})
 
 
+def verification_type_for(application: dict) -> str:
+    existing = application.get("verification_type", "")
+    if existing in VERIFICATION_TYPES:
+        return existing
+    text = " ".join(
+        (
+            application.get("reason_code", ""),
+            application.get("note", ""),
+            application.get("next_action", ""),
+        )
+    ).lower()
+    if re.search(r"verification code|security code|email verification|confirm.*email", text):
+        return "email_code"
+    if "captcha" in text:
+        return "captcha"
+    if "passkey" in text or "biometric" in text:
+        return "passkey"
+    if "account recovery" in text or "forgot password" in text:
+        return "account_recovery"
+    if "password" in text:
+        return "password"
+    if re.search(r"\bmfa\b|authenticator|device approval|security key", text):
+        return "mfa"
+    return ""
+
+
+def build_review_report(state: dict) -> dict:
+    applications = list(iter_applications(state))
+    identity_groups: dict[tuple[str, str, str], list[dict]] = {}
+    for application in applications:
+        seen_keys = set()
+        for identity in normalize_identities(application):
+            key = identity_key(identity)
+            if key in seen_keys or not (key[1] or key[2]):
+                continue
+            seen_keys.add(key)
+            identity_groups.setdefault(key, []).append(application)
+
+    repeated = []
+    mixed = []
+    for key, group in identity_groups.items():
+        unique = {application["id"]: application for application in group}
+        if len(unique) < 2:
+            continue
+        summary = {
+            "site_key": key[0],
+            "job_id": key[1],
+            "canonical_url": key[2],
+            "applications": [
+                {
+                    "application_id": application["id"],
+                    "run_id": application["run_id"],
+                    "status": application["status"],
+                    "company": application.get("company", ""),
+                    "title": application.get("title", ""),
+                }
+                for application in unique.values()
+            ],
+        }
+        repeated.append(summary)
+        if len({application["status"] for application in unique.values()}) > 1:
+            mixed.append(summary)
+
+    soft_pattern = re.compile(
+        r"preferred|desired|no (?:numeric )?(?:salary|compensation)|"
+        r"salary.*(?:unknown|not listed)|hard (?:minimum|floor)",
+        re.IGNORECASE,
+    )
+    late_pattern = re.compile(
+        r"transmitted partial|staged but|newly staged|resume.*(?:uploaded|transmitted)|"
+        r"data (?:entered|transmitted)",
+        re.IGNORECASE,
+    )
+    soft_skip_candidates = []
+    late_preflight_candidates = []
+    missing_metadata = []
+    recoverable_blocked: dict[str, list[dict]] = {
+        verification_type: [] for verification_type in VERIFICATION_TYPES
+    }
+    for application in applications:
+        summary = {
+            "application_id": application["id"],
+            "run_id": application["run_id"],
+            "company": application.get("company", ""),
+            "title": application.get("title", ""),
+            "status": application["status"],
+        }
+        missing = [
+            field
+            for field in (
+                "site_key",
+                "job_id",
+                "reason_category",
+                "reason_code",
+                "application_stage",
+            )
+            if not application.get(field)
+            and not (
+                field in {"reason_category", "reason_code"}
+                and application["status"] not in {"blocked", "skipped"}
+            )
+        ]
+        if missing:
+            missing_metadata.append({**summary, "missing": missing})
+        note = application.get("note", "")
+        if application["status"] == "skipped" and soft_pattern.search(note):
+            soft_skip_candidates.append(
+                {
+                    **summary,
+                    "reopen_argv": [
+                        "record",
+                        "--status",
+                        "in_progress",
+                        "--application-id",
+                        application["id"],
+                        "--reopen",
+                    ],
+                }
+            )
+        if application["status"] == "skipped" and late_pattern.search(note):
+            late_preflight_candidates.append(summary)
+        if application["status"] == "blocked" and not application.get("resolved_by"):
+            verification_type = verification_type_for(application)
+            if verification_type:
+                recoverable_blocked[verification_type].append(
+                    {
+                        **summary,
+                        "recover_argv": [
+                            "recover",
+                            "--source-application-id",
+                            application["id"],
+                        ],
+                    }
+                )
+
+    return {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "repeated_identity_groups": repeated,
+        "mixed_outcome_groups": mixed,
+        "missing_structured_metadata": missing_metadata,
+        "soft_skip_candidates": soft_skip_candidates,
+        "late_preflight_candidates": late_preflight_candidates,
+        "recoverable_blocked": recoverable_blocked,
+    }
+
+
+def backfill_tracker(
+    args: argparse.Namespace,
+    state: dict,
+    state_path: Path,
+    successful_applications_file: Path,
+) -> None:
+    raw_state = None
+    if state_path.exists():
+        raw_state = json.loads(state_path.read_text(encoding="utf-8"))
+    raw_application_count = sum(
+        len(run.get("applications", [])) for run in (raw_state or {}).get("runs", [])
+    )
+    normalized_application_count = sum(
+        len(run.get("applications", [])) for run in state["runs"]
+    )
+
+    legacy_metadata_updates = 0
+    for run in state["runs"]:
+        for application in run["applications"]:
+            application["identities"] = normalize_identities(application)
+            if application["identities"]:
+                primary = application["identities"][-1]
+                application["site_key"] = primary["site_key"]
+                application["job_id"] = primary["job_id"]
+                application["canonical_url"] = primary["canonical_url"]
+            if application["status"] in {"blocked", "skipped"}:
+                if not application.get("reason_code"):
+                    application["reason_code"] = "legacy_unclassified"
+                    legacy_metadata_updates += 1
+                if not application.get("reason_category"):
+                    application["reason_category"] = "other"
+                    legacy_metadata_updates += 1
+            application.setdefault("decision_strength", "unknown")
+            application.setdefault("application_stage", "unknown")
+            application.setdefault("transmitted_data", [])
+            application.setdefault("preflight_checks", {})
+            application.setdefault("preference_checks", {})
+            application.setdefault("verification_events", [])
+
+    review = build_review_report(state)
+    summary = {
+        "dry_run": not args.apply,
+        "raw_application_count": raw_application_count,
+        "normalized_application_count": normalized_application_count,
+        "collapsed_same_run_events": max(
+            raw_application_count - normalized_application_count, 0
+        ),
+        "legacy_metadata_updates": legacy_metadata_updates,
+        "repeated_identity_groups": len(review["repeated_identity_groups"]),
+        "mixed_outcome_groups": len(review["mixed_outcome_groups"]),
+        "soft_skip_candidates": len(review["soft_skip_candidates"]),
+        "recoverable_blocked": sum(
+            len(items) for items in review["recoverable_blocked"].values()
+        ),
+    }
+    if not args.apply:
+        print_json({"backfill": summary, "review": review})
+        return
+
+    if not state_path.exists():
+        raise SystemExit("Cannot apply a backfill before the tracker exists.")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = state_path.with_name(
+        f"{state_path.stem}.{timestamp}.bak{state_path.suffix}"
+    )
+    shutil.copyfile(state_path, backup_path)
+    os.chmod(backup_path, 0o600)
+    save_state(state_path, state)
+    save_successful_applications(successful_applications_file, state)
+    review_path = (
+        args.review_output.expanduser().resolve()
+        if args.review_output
+        else state_path.with_name("application-review.json")
+    )
+    save_json(review_path, review)
+    print_json(
+        {
+            "backfill": summary,
+            "backup_path": str(backup_path),
+            "review_path": str(review_path),
+        }
+    )
+
+
 def positive_integer(value: str) -> int:
     number = int(value)
     if number <= 0:
@@ -876,6 +1633,7 @@ def build_parser() -> argparse.ArgumentParser:
     start = commands.add_parser("start", help="Start or resume a bounded run.")
     start.add_argument("--target", required=True, type=positive_integer)
     start.add_argument("--objective", required=True)
+    start.add_argument("--kind", choices=RUN_KINDS, default="application")
 
     commands.add_parser("status", help="Show progress for the current run.")
 
@@ -902,6 +1660,24 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--job-id", default="")
     record.add_argument("--confirmation", default="")
     record.add_argument("--reason-code", default="")
+    record.add_argument("--reason-category", choices=REASON_CATEGORIES, default="")
+    record.add_argument(
+        "--decision-strength", choices=DECISION_STRENGTHS, default="unknown"
+    )
+    record.add_argument(
+        "--application-stage", choices=APPLICATION_STAGES, default="unknown"
+    )
+    record.add_argument(
+        "--transmitted-data",
+        action="append",
+        choices=TRANSMITTED_DATA_TYPES,
+        default=[],
+    )
+    record.add_argument("--preflight-check", action="append", default=[])
+    record.add_argument("--preference-check", action="append", default=[])
+    record.add_argument(
+        "--verification-type", choices=VERIFICATION_TYPES, default=""
+    )
     record.add_argument("--note", default="")
     record.add_argument("--worker", default="")
     record.add_argument("--browser-session", default="")
@@ -912,7 +1688,36 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--inferred-answer-count", type=nonnegative_integer)
     record.add_argument("--generated-answer-count", type=nonnegative_integer)
     record.add_argument("--allow-possible-match", action="store_true")
+    record.add_argument("--allow-hard-mismatch", action="store_true")
     record.add_argument("--reopen", action="store_true")
+
+    recover = commands.add_parser(
+        "recover", help="Reserve a blocked application in a recovery run."
+    )
+    recover.add_argument("--source-application-id", required=True)
+    recover.add_argument("--worker", required=True)
+    recover.add_argument("--browser-session", required=True)
+    recover.add_argument("--preflight-check", action="append", default=[])
+    recover.add_argument("--preference-check", action="append", default=[])
+    recover.add_argument("--note", default="")
+    recover.add_argument("--evidence-ref", action="append", default=[])
+    recover.add_argument("--allow-hard-mismatch", action="store_true")
+
+    verification = commands.add_parser(
+        "verification-event",
+        help="Record secret-free verification progress for a recovery.",
+    )
+    verification.add_argument("--application-id", required=True)
+    verification.add_argument("--type", required=True, choices=VERIFICATION_TYPES)
+    verification.add_argument("--event", required=True, choices=VERIFICATION_EVENTS)
+    verification.add_argument("--browser-session", required=True)
+    verification.add_argument("--message-received-at", default="")
+
+    backfill = commands.add_parser(
+        "backfill", help="Preview or apply identity and metadata backfill."
+    )
+    backfill.add_argument("--apply", action="store_true")
+    backfill.add_argument("--review-output", type=Path)
 
     amend = commands.add_parser(
         "amend", help="Amend or reopen an active or completed run."
@@ -942,6 +1747,12 @@ def main() -> None:
         check_submission(args, state)
     elif args.command == "record":
         record_application(args, state, state_path, successful_applications_file)
+    elif args.command == "recover":
+        recover_application(args, state, state_path, successful_applications_file)
+    elif args.command == "verification-event":
+        verification_event(args, state, state_path)
+    elif args.command == "backfill":
+        backfill_tracker(args, state, state_path, successful_applications_file)
     elif args.command == "amend":
         amend_run(args, state, state_path)
         save_successful_applications(successful_applications_file, state)

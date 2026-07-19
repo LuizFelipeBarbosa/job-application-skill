@@ -1,0 +1,106 @@
+:root {
+  --paper: #f2eee4;
+  --paper-light: #fffdf7;
+  --ink: #171714;
+  --ink-soft: #56544d;
+  --line: #b8b1a4;
+  --line-light: #ddd7ca;
+  --cobalt: #1f4bff;
+  --orange: #f15a32;
+  --olive: #6d774b;
+  --gold: #c89419;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+  min-width: 320px;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans Variable", sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  color: inherit;
+  font: inherit;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--cobalt);
+  color: white;
+}
+
+.fatal-shell {
+  align-items: center;
+  background:
+    linear-gradient(90deg, rgba(23, 23, 20, 0.05) 1px, transparent 1px) 0 0 / 36px 36px,
+    var(--paper);
+  display: flex;
+  min-height: 100vh;
+  padding: 24px;
+  justify-content: center;
+}
+
+.fatal-card {
+  background: var(--paper-light);
+  border: 1px solid var(--ink);
+  box-shadow: 10px 10px 0 var(--ink);
+  max-width: 720px;
+  padding: clamp(28px, 6vw, 70px);
+}
+
+.fatal-card h1 {
+  font-family: "Fraunces Variable", serif;
+  font-size: clamp(38px, 7vw, 74px);
+  font-weight: 520;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  margin: 20px 0 28px;
+}
+
+.fatal-card p {
+  color: var(--ink-soft);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.fatal-card .fatal-hint {
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  margin-top: 28px;
+  padding-top: 20px;
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono Variable", monospace;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

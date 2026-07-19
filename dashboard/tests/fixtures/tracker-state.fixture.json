@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "active_run_id": null,
+  "runs": [
+    {
+      "id": "fixture-run",
+      "objective": "Synthetic dashboard verification run",
+      "target": 2,
+      "status": "complete",
+      "created_at": "2026-07-14T16:00:00+00:00",
+      "completed_at": "2026-07-15T20:00:00+00:00",
+      "applications": [
+        {
+          "id": "submitted-one",
+          "company": "Northstar Labs",
+          "title": "Data Analyst",
+          "location": "San Francisco, CA",
+          "site": "careers.northstar.example",
+          "url": "https://careers.northstar.example/jobs/1",
+          "status": "submitted",
+          "recorded_at": "2026-07-14T17:00:00+00:00",
+          "updated_at": "2026-07-14T17:00:00+00:00",
+          "transitions": [{ "at": "2026-07-14T17:00:00+00:00", "from": "in_progress", "to": "submitted" }]
+        },
+        {
+          "id": "submitted-two",
+          "company": "Cedar Systems",
+          "title": "Product Analyst",
+          "location": "Remote",
+          "site": "jobs.cedar.example",
+          "url": "https://jobs.cedar.example/roles/2",
+          "status": "submitted",
+          "recorded_at": "2026-07-15T18:00:00+00:00",
+          "updated_at": "2026-07-15T18:00:00+00:00",
+          "transitions": [{ "at": "2026-07-15T18:00:00+00:00", "from": "ready_to_submit", "to": "submitted" }]
+        },
+        {
+          "id": "blocked-one",
+          "company": "Harbor Works",
+          "title": "Research Associate",
+          "location": "Seattle, WA",
+          "site": "apply.harbor.example",
+          "url": "https://apply.harbor.example/3",
+          "status": "blocked",
+          "recorded_at": "2026-07-15T19:00:00+00:00",
+          "updated_at": "2026-07-15T19:00:00+00:00",
+          "transitions": [{ "at": "2026-07-15T19:00:00+00:00", "from": "in_progress", "to": "blocked" }]
+        },
+        {
+          "id": "skipped-one",
+          "company": "Juniper Group",
+          "title": "Business Analyst",
+          "location": "New York, NY",
+          "site": "jobs.juniper.example",
+          "url": "https://jobs.juniper.example/4",
+          "status": "skipped",
+          "recorded_at": "2026-07-15T20:00:00+00:00",
+          "updated_at": "2026-07-15T20:00:00+00:00",
+          "transitions": [{ "at": "2026-07-15T20:00:00+00:00", "from": "in_progress", "to": "skipped" }]
+        }
+      ]
+    }
+  ]
+}

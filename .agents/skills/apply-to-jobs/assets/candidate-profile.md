@@ -44,10 +44,11 @@ Store real values only in the ignored `private/candidate-profile.md` copy of thi
 ## Search direction
 
 - Target roles and seniority: `<answer or profile-derived default>`
-- Locations and work arrangements: `<answer or profile-derived default>`
-- Company or industry preferences: `<answer or none>`
-- Freshness or application-date criteria: `<answer or none>`
-- Other job-selection constraints: `<answer or none>`
+- Hard eligibility facts: `<work authorization, start timing, degree status, or none>`
+- Mandatory job-selection constraints: `<only criteria the candidate explicitly requires>`
+- Soft preferences and targets: `<locations, compensation, industries, technologies, or none>`
+- Unknown criteria: `<criteria that must not be treated as disqualifying>`
+- Freshness or application-date criteria: `<hard or soft, with strength stated>`
 
 ## Source documents
 
@@ -62,7 +63,7 @@ Record these only after an authorized source or an exact form question makes the
 
 - Full address and postal code: `<private, declined, session only, or unknown>`
 - Earliest exact start date: `<answer, declined, session only, or unknown>`
-- Compensation response: `<answer, declined, session only, or unknown>`
+- Compensation response: `<answer, strength as hard or soft, declined, session only, or unknown>`
 - Relocation and travel: `<answer, declined, session only, or unknown>`
 - Screening and export-control responses: `<explicit answers, declined, session only, or unknown>`
 - Personal references: `<private details, declined, session only, or unknown>`

@@ -15,7 +15,7 @@ Use this guide when `Handshake` is enabled in `config/job-sites.json` or named i
 - Apply the run's query, job type, location, and other eligibility filters. The live search UI exposes **Describe a job you want**, **Location**, job-type controls, **Filters**, and **Sort by**.
 - Prefer `posted_date_desc` when freshness is not otherwise specified.
 - Run focused searches for one role family at a time. Do not use Handshake's saved interests, recommendations, or current selected job as a substitute for the run criteria.
-- Treat `/job-search/<job-id>` as the stable Handshake job identity. Ignore search, pagination, location, and recommendation query parameters when checking duplicates.
+- Treat `/job-search/<job-id>` and `/jobs/<job-id>` as the same stable Handshake identity. Extract `<job-id>` before reservation and ignore search, pagination, location, and recommendation query parameters when checking duplicates.
 
 ## Evaluate a job
 
@@ -38,6 +38,7 @@ Do not rely on Handshake's match indicator alone. Skip jobs that conflict with t
    - If the external link reaches a careers homepage or search page, search only for the exact Handshake position. Stop if the position cannot be verified; do not replace it with a different opening.
 3. Follow `references/browser.md` for document selection and uploads. Upload transcripts only when academic records are required and the profile permits their use.
 4. After submitting, verify a success page or confirmation number. Record the stable Handshake job ID and URL with `--site "Handshake"`; when the final form is external, include its host and URL in the tracker note.
+5. Before external data entry and again before final submission, update the same lifecycle with the verified employer ATS URL or requisition ID and rerun the duplicate check against that final identity.
 
 ## Leave unrelated Handshake state unchanged
 

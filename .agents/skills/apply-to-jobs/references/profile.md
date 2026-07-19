@@ -28,6 +28,14 @@ Honor a saved retention preference on later runs without repeating the notice. U
 - Never infer protected traits, demographic answers, disability or veteran status, citizenship, work authorization, sponsorship, clearance, relocation willingness, or sensitive answers from names, photos, schools, employers, locations, browser autofill, or indirect context.
 - Never store passwords, one-time codes, or authentication data in the candidate profile or any file. Store a password only in the operating-system credential vault through `scripts/password_manager.py` when the bounded application run's standing account-creation authorization applies or the user separately authorizes the account. Never store government identifiers, financial-account data, or unrelated medical details.
 
+## Classify selection criteria
+
+- Separate hard eligibility facts, explicit mandatory job-selection constraints, soft preferences or targets, and unknown criteria in `Search direction`.
+- Treat a criterion as hard only when the candidate explicitly requires it or the posting makes it a mandatory eligibility condition. Treat words such as **desired**, **preferred**, **target**, and **ideally** as soft.
+- Treat missing compensation, an employer preference, and a nonmandatory skill not documented in candidate materials as unknown or soft, not as a reason to skip.
+- Skip only for a verified hard conflict, unavailable posting, verified duplicate, safety concern, target completion, or explicit user direction. Record the decision strength and posting/profile evidence.
+- When a legacy profile does not state strength, preserve factual eligibility answers as hard facts and treat job-quality targets such as compensation, location preference, industry, or technology interest as soft until the user says otherwise.
+
 ## Persist explicit answers
 
 - Save a reusable explicit answer in the same turn before using it in a form. Update `Profile last updated`, append a concise dated entry to `Update history`, and remove any resolved outstanding question.

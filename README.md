@@ -122,6 +122,29 @@ Review the candidate profile carefully before beginning. Job applications are
 external submissions made in your name, so stay available for questions and
 monitor the run when forms contain unusual or sensitive requests.
 
+## Private dashboard
+
+The repository includes a local job-search command center under `dashboard/`.
+It reads the ignored tracker files on the server, visualizes application and
+automation performance, records post-submission outcomes in a separate ignored
+file, and provides copy-only access to application-account passwords stored in
+the operating system credential vault.
+
+Start it from the dashboard directory:
+
+```bash
+cd dashboard
+pnpm install
+pnpm dev
+```
+
+Then open `http://127.0.0.1:3000`. The server intentionally binds to the local
+loopback interface. Passwords are never displayed or returned to browser code;
+the dashboard asks the existing password manager to copy an indexed credential
+to the system clipboard and clears it after 30 seconds.
+
+See `dashboard/README.md` for configuration, security boundaries, and tests.
+
 ## Repository layout
 
 ```text
@@ -135,8 +158,10 @@ monitor the run when forms contain unusual or sensitive requests.
   scripts/tracker.py       Private duplicate and submission tracker
 config/
   job-sites.json
+dashboard/                  Local application analytics and account-vault UI
 private/                    Local candidate data; never committed
   accounts.json             Non-secret local account index
+  application-outcomes.json Dashboard-owned career stages and follow-ups
   successful-applications.json  Confirmed applications across all runs
 ```
 
