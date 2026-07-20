@@ -12,21 +12,33 @@ type AccountVaultProps = {
 };
 
 export function AccountVault({ timeZone }: AccountVaultProps) {
+  const [vaultToken, setVaultToken] = useState("");
   const [payload, setPayload] = useState<AccountsPayload | null>(null);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [clearCountdown, setClearCountdown] = useState(0);
 
-  const load = async () => {
+  const load = async (token = vaultToken) => {
+    if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/accounts", { cache: "no-store" });
+      const response = await fetch("/api/accounts", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const result = (await response.json()) as AccountsPayload & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Account Vault could not be loaded.");
+      if (!response.ok) {
+        if (response.status === 403) {
+          window.sessionStorage.removeItem("job_dashboard_vault_token");
+          setVaultToken("");
+          setPayload(null);
+        }
+        throw new Error(result.error || "Account Vault could not be loaded.");
+      }
       setPayload(result);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Account Vault could not be loaded.");
@@ -36,8 +48,22 @@ export function AccountVault({ timeZone }: AccountVaultProps) {
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const fragmentToken = fragment.get("vault_token") ?? "";
+    const token = fragmentToken || window.sessionStorage.getItem("job_dashboard_vault_token") || "";
+    if (fragmentToken) {
+      window.sessionStorage.setItem("job_dashboard_vault_token", fragmentToken);
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    const timer = window.setTimeout(() => {
+      setVaultToken(token);
+      if (token) void load(token);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // The token is established once for this browser tab and dashboard launch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -66,10 +92,12 @@ export function AccountVault({ timeZone }: AccountVaultProps) {
 
   const securePost = async (url: string) => {
     if (!payload?.csrfToken) throw new Error("Reload Account Vault to refresh its security session.");
+    if (!vaultToken) throw new Error("Start the dashboard with the Account Vault enabled.");
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${vaultToken}`,
         "X-Job-Dashboard-CSRF": payload.csrfToken,
       },
       body: "{}",
@@ -131,11 +159,22 @@ export function AccountVault({ timeZone }: AccountVaultProps) {
         </div>
         <div className={styles.vaultStatus} data-available={payload?.vaultAvailable || false}>
           <span />
-          {loading ? "Checking secure vault…" : payload?.vaultMessage || "Vault unavailable"}
+          {!vaultToken
+            ? "Disabled for this launch"
+            : loading
+              ? "Checking secure vault…"
+              : payload?.vaultMessage || "Vault unavailable"}
         </div>
       </header>
 
-      <aside className={styles.clipboardWarning}>
+      {!vaultToken ? (
+        <aside className={styles.clipboardWarning}>
+          <strong>Account Vault is off</strong>
+          <p>Restart with <code>pnpm dev:vault</code> or <code>pnpm start:vault</code>, then open the printed URL.</p>
+        </aside>
+      ) : null}
+
+      {vaultToken ? <aside className={styles.clipboardWarning}>
         <strong>Clipboard safety</strong>
         <p>
           Copied passwords clear automatically after 30 seconds. Clipboard-history software may
@@ -146,9 +185,9 @@ export function AccountVault({ timeZone }: AccountVaultProps) {
             Clear now · {clearCountdown}s
           </button>
         ) : null}
-      </aside>
+      </aside> : null}
 
-      <div className={styles.vaultToolbar}>
+      {vaultToken ? <div className={styles.vaultToolbar}>
         <div className={styles.searchField}>
           <SearchIcon />
           <input
@@ -162,12 +201,12 @@ export function AccountVault({ timeZone }: AccountVaultProps) {
         <button className={styles.secondaryButton} disabled={loading} onClick={() => void load()} type="button">
           Refresh accounts
         </button>
-      </div>
+      </div> : null}
 
       {error ? <p className={styles.vaultError}>{error}</p> : null}
       {notice ? <p className={styles.vaultNotice} role="status">{notice}</p> : null}
 
-      {loading ? (
+      {!vaultToken ? null : loading ? (
         <div className={styles.vaultLoading}>Reading non-secret account metadata…</div>
       ) : accounts.length ? (
         <div className={styles.accountGrid}>

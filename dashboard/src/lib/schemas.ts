@@ -84,14 +84,32 @@ export const OutcomePatchSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one field is required.");
 
-export const AccountsFileSchema = z.object({
+const AccountIdentitySchema = z.object({
+  site: z.string().min(1),
+  username: z.string().min(1),
+  created_at: TimestampSchema,
+  updated_at: TimestampSchema,
+});
+
+const LegacyAccountsFileSchema = z.object({
   schema_version: z.literal(1),
+  accounts: z.array(AccountIdentitySchema.extend({ permission_confirmed_at: TimestampSchema })),
+});
+
+const CurrentAccountsFileSchema = z.object({
+  schema_version: z.literal(2),
   accounts: z.array(
-    z.object({
-      site: z.string().min(1),
-      username: z.string().min(1),
-      created_at: TimestampSchema,
-      updated_at: TimestampSchema,
+    AccountIdentitySchema.extend({
+      authorization: z.object({
+        mode: z.enum(["bounded_run", "manual", "legacy_import"]),
+        reference: z.string(),
+        confirmed_at: TimestampSchema,
+      }),
     }),
   ),
 });
+
+export const AccountsFileSchema = z.discriminatedUnion("schema_version", [
+  LegacyAccountsFileSchema,
+  CurrentAccountsFileSchema,
+]);

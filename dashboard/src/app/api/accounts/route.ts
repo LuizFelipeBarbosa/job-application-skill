@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { listAccountSummaries, vaultStatus } from "@/lib/accounts.server";
 import {
-  assertLocalRequest,
   createCsrfToken,
   CSRF_COOKIE_NAME,
   CredentialSecurityError,
+  validateCredentialRead,
 } from "@/lib/security.server";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    assertLocalRequest(request);
+    validateCredentialRead(request);
     const [accounts, vault] = await Promise.all([listAccountSummaries(), vaultStatus()]);
     const csrfToken = createCsrfToken();
     const response = NextResponse.json(
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       error instanceof CredentialSecurityError
         ? error.message
         : "Account Vault could not be loaded.";
-    return NextResponse.json({ error: message }, { status: 403 });
+    const status = error instanceof CredentialSecurityError ? error.status : 403;
+    return NextResponse.json({ error: message }, { status });
   }
 }

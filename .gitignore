@@ -25,6 +25,11 @@
 # Generated working files
 /tmp/
 /output/
+/.runtime/
+
+# User-owned Sites and Cloudflare deployment state
+dashboard-sites/.openai/hosting.json
+dashboard-sites/.wrangler/
 
 __pycache__/
 *.pyc

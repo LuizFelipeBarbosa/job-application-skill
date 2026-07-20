@@ -1,169 +1,79 @@
-# Apply to Jobs
+# Job Application Suite
 
-`apply-to-jobs` is a Codex skill that searches configured job sources and
-submits a user-defined number of matching applications. It builds a reusable
-private candidate profile, asks for information only when the current search or
-form needs it, prevents duplicate submissions, and records only confirmed
-applications.
+`job-application-suite` is an MIT-licensed Codex plugin for bounded job-application runs. The `0.1.0-beta.1` source includes duplicate-safe tracking, Gmail-assisted verification, Chrome and Computer Use guidance, OS-vault password storage, a local analytics dashboard, and an owner-only hosted dashboard.
+
+This beta can submit applications in your name. Review the candidate profile, platform limitations, and run brief before allowing external data entry.
 
 ## Requirements
 
-- Codex with repository skills enabled
-- The Codex Chrome plugin and extension, connected to the Chrome profile you
-  use for job applications
-- A signed-in account for at least one configured job source
-- Python 3 for the local application tracker
-- The Python dependencies used by the local password manager
-- A resume and the candidate information required by application forms
+- Python 3.9–3.13
+- Node.js 22.13 or newer
+- pnpm 10.28.2 and npm with frozen lockfiles
+- Codex, the official Chrome integration, and the official Gmail connector
+- macOS Keychain or Windows Credential Locker for full support
 
-The skill uses the existing browser session. Do not place passwords, cookies,
-authentication tokens, or other credentials in this repository.
+Linux supports the tracker, Gmail, dashboards, Chrome where available, and supported secure keyring backends, but not full Computer Use parity.
 
-Install the password-manager dependency:
+## Install and diagnose
 
-```bash
-python3 -m pip install -r .agents/skills/apply-to-jobs/requirements.txt
-```
+Clone the public repository, open it in Codex, and install `job-application-suite` from the repo marketplace at `.agents/plugins/marketplace.json`. Repo-scoped `.agents` and `.claude` links point to the plugin's single canonical skill copy.
 
-## Install
-
-Clone the repository and start Codex from its root:
+Create the isolated, hash-locked Python runtime without recording credentials:
 
 ```bash
-git clone https://github.com/LuizFelipeBarbosa/job-application-skill.git
-cd job-application-skill
+python3 plugins/job-application-suite/skills/apply-to-jobs/scripts/bootstrap.py
 ```
 
-Codex discovers the repo-scoped skill under
-`.agents/skills/apply-to-jobs/`. The skill resolves its scripts and bundled
-templates relative to that directory, while runtime profile and tracker state
-stay under the current workspace's ignored `private/` directory.
+Run the read-only local diagnostic:
 
-## Configure
+```bash
+.runtime/venv/bin/python \
+  plugins/job-application-suite/skills/apply-to-jobs/scripts/doctor.py \
+  --workspace . --format human
+```
 
-The skill creates the private profile when needed. To prepare it manually:
+On Windows, use `.runtime\venv\Scripts\python.exe`. Doctor exits `0` for pass/warnings, `1` for a missing required capability, and `2` for invalid configuration. JSON output is available with `--format json`.
+
+Live Gmail, Chrome, upload, and Computer Use probes run only when explicitly requested. They use a profile check and the local synthetic fixture; they do not read ordinary mail, job-site data, or credentials.
+
+## Configure and run
+
+Workspace files in `config/` override the plugin defaults only after schema validation. Handshake is enabled by default. Chrome onboarding should grant Handshake and then approve each verified employer ATS domain once; never choose **Allow for all sites**.
+
+Prepare truthful candidate data under ignored `private/` storage:
 
 ```bash
 mkdir -p private/documents
-cp .agents/skills/apply-to-jobs/assets/candidate-profile.md \
+cp plugins/job-application-suite/skills/apply-to-jobs/assets/candidate-profile.md \
   private/candidate-profile.md
 ```
 
-Then:
-
-1. Fill in `private/candidate-profile.md` with truthful candidate information
-   and application preferences.
-2. Put authorized resumes, cover letters, transcripts, or other application
-   files in `private/documents/` and list their paths in the profile.
-3. Review `config/job-sites.json`. Handshake is the included default adapter;
-   additional sources can provide their own enabled entry and instruction file.
-4. Connect the Codex Chrome extension to the Chrome profile that is signed in
-   to the job sites you want to use.
-
-The private candidate profile is the skill's durable memory. On first use, the
-skill explains that reusable answers are saved locally; users can mark any
-answer `session only`. On each run and continuation, the skill incorporates new
-or modified authorized documents and reusable explicit responses, records
-their provenance, and reuses them later. Conflicting or stale values require
-confirmation, and protected or sensitive answers are never inferred.
-
-The entire `private/` directory, application history, candidate profiles,
-resumes, cover letters, transcripts, and generated output are ignored by Git.
-Keep real candidate data out of the bundled template and all other tracked
-files.
-
-The tracker maintains `private/successful-applications.json` as a dedicated
-all-runs ledger containing only applications with confirmed successful
-submissions. It is generated from the private tracker state and should not be
-edited manually.
-
-## Account creation and local passwords
-
-If an application requires a new account, the skill asks for explicit
-permission for that specific site and username before registering. General
-permission to submit applications does not authorize account creation. Existing
-accounts are reused through the user's signed-in browser session instead of
-creating duplicates.
-
-New passwords are generated by `scripts/password_manager.py` and stored through
-Python `keyring` in the operating system's local credential vault, such as
-macOS Keychain or the corresponding secure vault on another platform. Passwords
-are never printed or written to the repository. `private/accounts.json` stores
-only non-secret account metadata and is ignored by Git. Any vault synchronization
-follows the user's operating-system settings.
-
-For form entry, the manager copies a password to the local clipboard without
-printing it. The skill pastes it into the password fields and immediately
-clears the clipboard. Clipboard-history software can retain copied values, so
-disable clipboard history or enter the password manually if that is a concern.
-
-## Use
-
-Ask naturally with an explicit number of applications and any important
-selection criteria:
+Then ask for a positive bounded target, for example:
 
 ```text
-Apply to 10 entry-level data science jobs using $apply-to-jobs.
+Apply to 5 matching new-grad software engineering jobs. Review each before submission.
 ```
 
-The skill summarizes the run, begins with the information already available,
-and asks only when a useful search or live form cannot continue. It skips
-verified duplicates and incompatible roles, then continues until it reaches the
-requested number of confirmed submissions or encounters a genuine blocker.
+That request authorizes ordinary accounts required solely for this bounded run. The run brief discloses the authorization before browser data entry. Paid services, public profiles, marketing, unusual terms, and changes to existing-account security still require confirmation.
 
-You can make the request more specific:
+Gmail beta access is provider-neutral in design but ships only the Gmail adapter. It permits profile, narrow search, and selected-message read operations. Sending, drafting, forwarding, archiving, deleting, and labeling are prohibited.
 
-```text
-Apply to 5 new-grad software engineering jobs in California or remote, posted
-within the last 14 days. Review each application before submitting it.
-```
+## Local dashboards
 
-Review the candidate profile carefully before beginning. Job applications are
-external submissions made in your name, so stay available for questions and
-monitor the run when forms contain unusual or sensitive requests.
-
-## Private dashboard
-
-The repository includes a local job-search command center under `dashboard/`.
-It reads the ignored tracker files on the server, visualizes application and
-automation performance, records post-submission outcomes in a separate ignored
-file, and provides copy-only access to application-account passwords stored in
-the operating system credential vault.
-
-Start it from the dashboard directory:
+The analytics dashboard is available normally:
 
 ```bash
 cd dashboard
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Then open `http://127.0.0.1:3000`. The server intentionally binds to the local
-loopback interface. Passwords are never displayed or returned to browser code;
-the dashboard asks the existing password manager to copy an indexed credential
-to the system clipboard and clears it after 30 seconds.
+Account Vault is disabled in ordinary launches. Enable it for one process with `pnpm dev:vault` or, after a build, `pnpm start:vault`, then open the printed fragment-token URL. The token is fresh for each launch, removed from the address bar, kept in tab session storage, and sent only as a bearer header. Passwords never enter HTTP responses.
 
-See `dashboard/README.md` for configuration, security boundaries, and tests.
+The diagnostic fixture is at `http://127.0.0.1:3000/diagnostics/browser` and must be used only with the bundled synthetic upload.
 
-## Repository layout
+The vendored `dashboard-sites/` companion permanently excludes credential operations and private fields. See its README for user-owned D1 provisioning and self-deployment; never use another installation's Sites project.
 
-```text
-.agents/skills/apply-to-jobs/
-  SKILL.md                 Workflow and safety instructions
-  agents/openai.yaml       Codex skill metadata
-  assets/                  Private-profile template
-  references/              Profile, browser, and site guidance
-  requirements.txt         Password-manager dependency
-  scripts/password_manager.py  Local OS-vault password manager
-  scripts/tracker.py       Private duplicate and submission tracker
-config/
-  job-sites.json
-dashboard/                  Local application analytics and account-vault UI
-private/                    Local candidate data; never committed
-  accounts.json             Non-secret local account index
-  application-outcomes.json Dashboard-owned career stages and follow-ups
-  successful-applications.json  Confirmed applications across all runs
-```
+## Security and beta status
 
-Job sites and browser interfaces change over time. Re-check the workflow and
-site-specific instructions before relying on the skill for unattended batches.
+Read [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [docs/PLATFORM_SUPPORT.md](docs/PLATFORM_SUPPORT.md), and [docs/BETA_LIMITATIONS.md](docs/BETA_LIMITATIONS.md). `0.1.0-beta.1` is publishable only after automated checks and the macOS and Windows acceptance records in [docs/BETA_ACCEPTANCE.md](docs/BETA_ACCEPTANCE.md) are complete.

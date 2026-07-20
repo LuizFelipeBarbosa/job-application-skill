@@ -1,11 +1,13 @@
 {
   "name": "job-search-command-center",
-  "version": "1.0.0",
+  "version": "0.1.0-beta.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1",
+    "dev": "node scripts/start-dashboard.mjs dev",
+    "dev:vault": "node scripts/start-dashboard.mjs dev --vault",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1",
+    "start": "node scripts/start-dashboard.mjs start",
+    "start:vault": "node scripts/start-dashboard.mjs start --vault",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -37,5 +39,13 @@
     "typescript": "^5.9.3",
     "vitest": "4.1.10"
   },
-  "packageManager": "pnpm@10.28.2"
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.10"
+    }
+  }
 }

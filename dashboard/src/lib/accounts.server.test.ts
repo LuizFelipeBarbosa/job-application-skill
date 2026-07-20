@@ -42,6 +42,7 @@ describe("account vault bridge", () => {
             username: "candidate@example.com",
             created_at: "2026-07-14T17:00:00+00:00",
             updated_at: "2026-07-15T17:00:00+00:00",
+            permission_confirmed_at: "2026-07-14T17:00:00+00:00",
           },
         ],
       }),
@@ -63,6 +64,7 @@ describe("account vault bridge", () => {
         site: "careers.example.com",
         username: "candidate@example.com",
         password_printed: false,
+        clear_after_seconds: 30,
       }),
       stderr: "",
     });
@@ -88,6 +90,8 @@ describe("account vault bridge", () => {
       "careers.example.com",
       "--username",
       "candidate@example.com",
+      "--clear-after",
+      "30",
     ]);
     expect(options.shell).toBeUndefined();
     expect(JSON.stringify(argumentsList)).not.toContain("secret-value");

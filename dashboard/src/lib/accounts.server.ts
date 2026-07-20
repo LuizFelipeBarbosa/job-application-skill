@@ -11,8 +11,6 @@ import type { AccountSummary } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 const CLEAR_AFTER_SECONDS = 30;
-
-let clipboardClearTimer: ReturnType<typeof setTimeout> | null = null;
 let cachedVaultStatus: { available: boolean; message: string; expiresAt: number } | null = null;
 
 export class CredentialOperationError extends Error {
@@ -40,7 +38,7 @@ async function loadAccounts(filePath = accountsPath()) {
     return AccountsFileSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { schema_version: 1 as const, accounts: [] };
+      return { schema_version: 2 as const, accounts: [] };
     }
     throw new CredentialOperationError("Account metadata could not be loaded.");
   }
@@ -125,17 +123,6 @@ async function clearClipboardCommand(): Promise<void> {
   }
 }
 
-function scheduleClipboardClear(): void {
-  if (clipboardClearTimer) {
-    clearTimeout(clipboardClearTimer);
-  }
-  clipboardClearTimer = setTimeout(() => {
-    clipboardClearTimer = null;
-    void clearClipboardCommand().catch(() => undefined);
-  }, CLEAR_AFTER_SECONDS * 1_000);
-  clipboardClearTimer.unref?.();
-}
-
 export async function copyAccountPassword(accountId: string) {
   const account = await findAccount(accountId);
   if (!account) {
@@ -147,19 +134,20 @@ export async function copyAccountPassword(accountId: string) {
     account.site,
     "--username",
     account.username,
+    "--clear-after",
+    String(CLEAR_AFTER_SECONDS),
   ]);
-  if (result.copied !== true || result.password_printed !== false) {
+  if (
+    result.copied !== true ||
+    result.password_printed !== false ||
+    result.clear_after_seconds !== CLEAR_AFTER_SECONDS
+  ) {
     throw new CredentialOperationError("The password manager did not confirm a secure copy.");
   }
-  scheduleClipboardClear();
   return { copied: true as const, clearAfterSeconds: CLEAR_AFTER_SECONDS };
 }
 
 export async function clearCredentialClipboard() {
-  if (clipboardClearTimer) {
-    clearTimeout(clipboardClearTimer);
-    clipboardClearTimer = null;
-  }
   await clearClipboardCommand();
   return { cleared: true as const };
 }

@@ -65,12 +65,21 @@ test("keeps Account Vault copy-only in the browser", async ({ page }) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto("/#vault_token=e2e-launch-token");
   await page.getByRole("button", { name: "Account Vault" }).click();
   await expect(page.getByText("candidate@example.com")).toBeVisible();
   await page.getByRole("button", { name: "Copy password" }).click();
   await expect(page.getByText("Password copied from the OS vault. Paste it now.")).toBeVisible();
   await expect(page.locator("input[type=password]")).toHaveCount(0);
+});
+
+test("completes the synthetic browser and Computer Use fixture", async ({ page }) => {
+  await page.goto("/diagnostics/browser");
+  await page.getByLabel("Synthetic applicant name").fill("Synthetic Candidate");
+  await page.getByLabel("Synthetic file").setInputFiles("tests/fixtures/browser-smoke.txt");
+  await page.getByLabel("I confirm these values are synthetic.").check();
+  await page.getByRole("button", { name: "Complete diagnostic" }).click();
+  await expect(page.getByText(/DIAGNOSTIC PASSED: Synthetic Candidate/)).toBeVisible();
 });
 
 test("matches the editorial overview at desktop and mobile widths", async ({ page }) => {

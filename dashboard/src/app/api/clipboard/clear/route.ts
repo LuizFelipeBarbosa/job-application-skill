@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       error instanceof CredentialSecurityError || error instanceof CredentialOperationError
         ? error.message
         : "The clipboard could not be cleared.";
-    const status = error instanceof CredentialSecurityError ? 403 : 409;
+    const status = error instanceof CredentialSecurityError ? error.status : 409;
     return NextResponse.json({ error: message }, { status });
   }
 }

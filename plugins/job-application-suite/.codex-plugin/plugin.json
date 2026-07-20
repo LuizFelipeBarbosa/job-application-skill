@@ -1,0 +1,29 @@
+{
+  "name": "job-application-suite",
+  "version": "0.1.0-beta.1",
+  "description": "Apply to a bounded set of jobs with verified browser, email, tracker, and local credential workflows.",
+  "author": {
+    "name": "Luiz Felipe Barbosa",
+    "url": "https://github.com/LuizFelipeBarbosa"
+  },
+  "homepage": "https://github.com/LuizFelipeBarbosa/job-application-skill",
+  "repository": "https://github.com/LuizFelipeBarbosa/job-application-skill",
+  "license": "MIT",
+  "keywords": ["jobs", "applications", "gmail", "chrome", "career"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Job Application Suite",
+    "shortDescription": "Apply to jobs with guarded automation",
+    "longDescription": "Run bounded job-application batches with verified role selection, Gmail-assisted confirmations, Chrome control, duplicate prevention, and passwords stored in the local operating-system vault.",
+    "developerName": "Luiz Felipe Barbosa",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/LuizFelipeBarbosa/job-application-skill",
+    "privacyPolicyURL": "https://github.com/LuizFelipeBarbosa/job-application-skill/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/LuizFelipeBarbosa/job-application-skill/blob/main/TERMS.md",
+    "defaultPrompt": [
+      "Apply to five matching jobs and review exceptions with me."
+    ]
+  },
+  "apps": "./.app.json"
+}
