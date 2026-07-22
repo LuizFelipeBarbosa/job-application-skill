@@ -7,6 +7,7 @@ This beta can submit applications in your name. Review the candidate profile, pl
 ## Requirements
 
 - Python 3.9–3.13
+- uv 0.9.29 or newer
 - Node.js 22.13 or newer
 - pnpm 10.28.2 and npm with frozen lockfiles
 - Codex, the official Chrome integration, and the official Gmail connector
@@ -14,11 +15,31 @@ This beta can submit applications in your name. Review the candidate profile, pl
 
 Linux supports the tracker, Gmail, dashboards, Chrome where available, and supported secure keyring backends, but not full Computer Use parity.
 
+Install uv from the [official installation guide](https://docs.astral.sh/uv/getting-started/installation/) if `uv --version` is not available.
+
 ## Install and diagnose
 
-Clone the public repository, open it in Codex, and install `job-application-suite` from the repo marketplace at `.agents/plugins/marketplace.json`. Repo-scoped `.agents` and `.claude` links point to the plugin's single canonical skill copy.
+Install the complete plugin rather than copying only `SKILL.md`; the plugin also provides its Gmail app configuration, supporting scripts, references, and default configuration.
 
-Create the isolated, hash-locked Python runtime without recording credentials:
+Clone the public repository on the target machine:
+
+```bash
+git clone https://github.com/LuizFelipeBarbosa/job-application-skill.git
+cd job-application-skill
+```
+
+Register the repository marketplace and install the plugin with the Codex CLI:
+
+```bash
+codex plugin marketplace add .
+codex plugin add job-application-suite@personal
+```
+
+The `personal` marketplace name comes from `.agents/plugins/marketplace.json`. To install through the desktop app instead, open the cloned repository in Codex, restart the app, open **Plugins**, select the **Personal** marketplace, and install **Job Application Suite**. Complete the Gmail authorization when prompted and make sure the official Chrome and Computer Use plugins are enabled.
+
+Repo-scoped `.agents` and `.claude` links point to the plugin's single canonical skill copy. Restart Codex after a CLI installation and use a new task so the installed skill is available as `job-application-suite:apply-to-jobs`.
+
+Create the isolated, lockfile-backed Python runtime without recording credentials. Bootstrap runs `uv sync --locked` against the skill's `pyproject.toml` and `uv.lock`, while keeping the environment at `.runtime/venv`:
 
 ```bash
 python3 plugins/job-application-suite/skills/apply-to-jobs/scripts/bootstrap.py

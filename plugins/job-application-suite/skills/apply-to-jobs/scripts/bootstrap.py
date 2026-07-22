@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
-import venv
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-LOCK_FILE = SKILL_ROOT / "requirements.lock"
+PROJECT_FILE = SKILL_ROOT / "pyproject.toml"
+LOCK_FILE = SKILL_ROOT / "uv.lock"
 
 
 def workspace_root(start: Path) -> Path:
@@ -35,26 +37,35 @@ def main() -> None:
 
     if not ((3, 9) <= sys.version_info[:2] < (3, 14)):
         raise SystemExit("Python 3.9 through 3.13 is required.")
-    if not LOCK_FILE.exists():
-        raise SystemExit(f"Missing hash-locked requirements file: {LOCK_FILE}")
+    if not PROJECT_FILE.exists() or not LOCK_FILE.exists():
+        raise SystemExit(f"Missing uv project files under: {SKILL_ROOT}")
+    uv = shutil.which("uv")
+    if not uv:
+        raise SystemExit("uv 0.9.29 or newer is required.")
 
     root = workspace_root(args.workspace)
     venv_path = root / ".runtime" / "venv"
-    venv.EnvBuilder(with_pip=True).create(venv_path)
-    python = runtime_python(venv_path)
+    environment = os.environ.copy()
+    environment["UV_PROJECT_ENVIRONMENT"] = str(venv_path)
     subprocess.run(
         [
-            str(python),
-            "-m",
-            "pip",
-            "install",
-            "--disable-pip-version-check",
-            "--require-hashes",
-            "-r",
-            str(LOCK_FILE),
+            uv,
+            "sync",
+            "--project",
+            str(SKILL_ROOT),
+            "--locked",
+            "--no-dev",
+            "--no-install-project",
+            "--no-python-downloads",
+            "--python",
+            sys.executable,
         ],
+        env=environment,
         check=True,
     )
+    python = runtime_python(venv_path)
+    if not python.is_file():
+        raise SystemExit(f"uv did not create the expected runtime: {python}")
     print(f"Runtime ready: {python}")
 
 

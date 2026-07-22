@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -35,7 +36,8 @@ def validate() -> list[str]:
         ROOT / "docs" / "BETA_LIMITATIONS.md",
         ROOT / "docs" / "BETA_ACCEPTANCE.md",
         SKILL / "SKILL.md",
-        SKILL / "requirements.lock",
+        SKILL / "pyproject.toml",
+        SKILL / "uv.lock",
         ROOT / "dashboard-sites" / "VENDORED_SOURCE.md",
     )
     for path in required_files:
@@ -99,9 +101,19 @@ def validate() -> list[str]:
         except (OSError, json.JSONDecodeError, ValueError) as error:
             errors.append(f"Invalid dashboard package: {error}")
 
-    lock_text = (SKILL / "requirements.lock").read_text(encoding="utf-8")
-    if "--hash=sha256:" not in lock_text or "keyring==25.7.0" not in lock_text:
-        errors.append("Python dependency lock is not hash-locked to keyring 25.7.0")
+    project_text = (SKILL / "pyproject.toml").read_text(encoding="utf-8")
+    lock_text = (SKILL / "uv.lock").read_text(encoding="utf-8")
+    if 'requires-python = ">=3.9,<3.14"' not in project_text:
+        errors.append("Python project does not support the required Python range")
+    if '"keyring==25.7.0"' not in project_text:
+        errors.append("Python project does not pin keyring 25.7.0")
+    if not re.search(
+        r'\[\[package\]\]\s+name = "keyring"\s+version = "25\.7\.0"',
+        lock_text,
+    ):
+        errors.append("uv.lock does not lock keyring 25.7.0")
+    if 'hash = "sha256:' not in lock_text:
+        errors.append("uv.lock does not contain artifact hashes")
 
     tracked = subprocess.run(
         ["git", "ls-files", "--stage", "dashboard-sites"],

@@ -4,12 +4,12 @@ Complete separate dated records on macOS and Windows. Use synthetic data except 
 
 ## macOS record
 
-- [ ] Fresh-clone plugin installation and doctor exit `0`
-- [ ] Temporary credential generate, copy, guarded clear, and delete with cleanup verified
-- [ ] Gmail profile check and one user-created synthetic verification message selected correctly
-- [ ] Chrome and Computer Use complete the local diagnostic fixture, including synthetic upload
+- [x] Fresh-clone plugin installation and doctor exit `0`
+- [x] Temporary credential generate, copy, guarded clear, and delete with cleanup verified
+- [ ] Gmail profile check and one user-created synthetic verification message selected correctly (profile passed; synthetic message pending)
+- [x] Chrome and Computer Use complete the local diagnostic fixture, including synthetic upload
 - [ ] One review-before-submit, user-authorized application canary with visible confirmation
-- [ ] Tester, macOS version, Codex version, Chrome version, date, and evidence reference recorded
+- [x] Tester, macOS version, Codex version, Chrome version, date, and evidence reference recorded in [the 2026-07-20 macOS acceptance record](acceptance/2026-07-20-macos.md)
 
 ## Windows record
 
