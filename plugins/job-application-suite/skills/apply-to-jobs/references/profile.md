@@ -23,6 +23,7 @@ Honor a saved retention preference on later runs without repeating the notice. U
 ## Extract and merge facts
 
 - Extract only explicit application-relevant facts: identity and contact information, professional URLs, education, employment, dated achievements, skills, languages, certifications, and portfolio evidence.
+- Keep one explicit primary application and verification email in the candidate profile. Treat it as authoritative over local computer accounts, Git identities, browser autofill, document contact lines, ATS suggestions, and historical account usernames. Never infer or substitute an email from those sources.
 - Carry work authorization, sponsorship, citizenship, clearance, location, start-date, compensation, reference, screening, or voluntary self-identification answers only when the source states the candidate's current answer directly and unambiguously.
 - Prefer the newest user-supplied resume for dated employment history. Do not silently overwrite a direct saved answer. Record conflicting or plausibly stale values under `Conflicts requiring confirmation` and do not use them until resolved.
 - Never infer protected traits, demographic answers, disability or veteran status, citizenship, work authorization, sponsorship, clearance, relocation willingness, or sensitive answers from names, photos, schools, employers, locations, browser autofill, or indirect context.

@@ -1,7 +1,8 @@
 # Beta limitations
 
 - Gmail is the only email adapter. Outlook is deferred.
-- Handshake is the bundled discovery source; external employer ATS domains require one-time Chrome approval.
+- Handshake is the bundled source-specific adapter. Exact posting URLs and user-named sites use the generic verified-site workflow; external employer or ATS domains may require Chrome approval.
+- Browser and Computer Use confirmation requirements cannot be disabled by the skill, so a run may pause immediately before sensitive data transmission, an authentication link, or final submission.
 - Account Vault is local and opt-in per launch. It does not create, rotate, display, or recover existing-account passwords.
 - Schema-v1 account metadata is read during the beta but must be explicitly migrated before mutation.
 - Windows ACLs are used instead of POSIX mode bits; acceptance must verify the private directory is not broadly accessible.

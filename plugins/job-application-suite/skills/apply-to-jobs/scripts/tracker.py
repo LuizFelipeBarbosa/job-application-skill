@@ -83,6 +83,7 @@ TRANSMITTED_DATA_TYPES = (
 )
 VERIFICATION_TYPES = (
     "email_code",
+    "email_link",
     "captcha",
     "password",
     "account_recovery",
@@ -256,30 +257,49 @@ def normalize_state(state: dict) -> dict:
     for run in state["runs"]:
         run.setdefault("kind", "application")
         applications = []
+        identity_indexes: dict[tuple[str, ...], int] = {}
+
         for raw_application in run.get("applications", []):
             application = normalize_application(raw_application)
-            current = next(
-                (
-                    item
-                    for item in applications
-                    if exact_match(
-                        item,
-                        canonical_url=application["canonical_url"],
-                        site=application["site"],
-                        job_id=application["job_id"],
-                    )
-                ),
-                None,
-            )
-            if current is None or (
+
+            matching_indexes = set()
+            for identity in application["identities"]:
+                site_key, job_id, canonical_url = identity_key(identity)
+                if site_key and job_id:
+                    index = identity_indexes.get(("provider", site_key, job_id))
+                    if index is not None:
+                        matching_indexes.add(index)
+                if canonical_url:
+                    index = identity_indexes.get(("url", canonical_url))
+                    if index is not None:
+                        matching_indexes.add(index)
+
+            current_index = min(matching_indexes) if matching_indexes else None
+            if current_index is None or (
                 not application["canonical_url"]
                 and not has_provider_identifier(
                     application["site"], application["job_id"]
                 )
             ):
                 applications.append(application)
+                current_index = len(applications) - 1
             else:
-                merge_application_lifecycle(current, application)
+                merge_application_lifecycle(
+                    applications[current_index], application
+                )
+
+            for identity in applications[current_index]["identities"]:
+                site_key, job_id, canonical_url = identity_key(identity)
+                keys = []
+                if site_key and job_id:
+                    keys.append(("provider", site_key, job_id))
+                if canonical_url:
+                    keys.append(("url", canonical_url))
+                for key in keys:
+                    prior_index = identity_indexes.get(key)
+                    if prior_index is None or current_index < prior_index:
+                        identity_indexes[key] = current_index
+
         run["applications"] = applications
     return state
 
@@ -1189,7 +1209,7 @@ def verification_event(
         if lock.get("browser_session") != browser_session:
             raise SystemExit("Verification must stay in the requesting browser session.")
 
-    if verification_type == "email_code":
+    if verification_type in {"email_code", "email_link"}:
         if args.event == "ready":
             requested = next(
                 (
@@ -1210,9 +1230,11 @@ def verification_event(
                 raise SystemExit("The verification message predates the current request.")
         if args.event == "attempted":
             if not last_event or last_event.get("event") != "ready":
-                raise SystemExit("Enter only a code marked ready for this session.")
+                raise SystemExit(
+                    "Use only an email verification artifact marked ready for this session."
+                )
             if attempts >= 2:
-                raise SystemExit("Email-code verification allows only one clean retry.")
+                raise SystemExit("Email verification allows only one clean retry.")
             attempts += 1
         if args.event in {"succeeded", "failed"} and (
             not last_event or last_event.get("event") != "attempted"
@@ -1238,17 +1260,23 @@ def verification_event(
         "user_action_required",
     }
     second_email_failure = (
-        verification_type == "email_code" and args.event == "failed" and attempts >= 2
+        verification_type in {"email_code", "email_link"}
+        and args.event == "failed"
+        and attempts >= 2
     )
     if second_email_failure:
+        artifact_name = "code" if verification_type == "email_code" else "link"
         application.update(
             {
                 "status": "blocked",
                 "reason_category": "technical",
-                "reason_code": "session_bound_code_rejected",
+                "reason_code": f"session_bound_{artifact_name}_rejected",
                 "decision_strength": "not_applicable",
                 "application_stage": "form_opened",
-                "note": "Two session-bound email verification attempts were rejected.",
+                "note": (
+                    "Two session-bound email verification "
+                    f"{artifact_name} attempts were rejected."
+                ),
                 "next_action": "Resume only after the provider resets verification.",
                 "browser_session": browser_session,
             }
@@ -1393,6 +1421,8 @@ def verification_type_for(application: dict) -> str:
             application.get("next_action", ""),
         )
     ).lower()
+    if re.search(r"verification link|magic link|click.*verif|confirm.*email.*link", text):
+        return "email_link"
     if re.search(r"verification code|security code|email verification|confirm.*email", text):
         return "email_code"
     if "captcha" in text:

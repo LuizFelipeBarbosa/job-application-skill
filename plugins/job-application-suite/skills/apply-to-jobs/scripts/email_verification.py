@@ -6,10 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
+import html
 import re
+from typing import Literal
+from urllib.parse import urlparse
 
 
-MAX_CODE_AGE = timedelta(minutes=10)
+MAX_VERIFICATION_AGE = timedelta(minutes=10)
 MAX_ATTEMPTS = 2
 ALLOWED_GMAIL_OPERATIONS = frozenset({"profile", "search", "read_selected_message"})
 CODE_PATTERN = re.compile(r"(?<![A-Z0-9])([A-Z0-9]{4,8})(?![A-Z0-9])", re.IGNORECASE)
@@ -18,6 +21,7 @@ LABELED_CODE_PATTERN = re.compile(
     r"([A-Z0-9]{4,8})(?![A-Z0-9])",
     re.IGNORECASE,
 )
+LINK_PATTERN = re.compile(r'https://[^\s<>"\']+', re.IGNORECASE)
 
 
 class VerificationSelectionError(ValueError):
@@ -31,6 +35,8 @@ class VerificationContext:
     expected_identities: tuple[str, ...]
     browser_session: str
     attempted_message_ids: frozenset[str] = frozenset()
+    expected_method: Literal["code", "link"] = "code"
+    allowed_link_hosts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -47,7 +53,9 @@ class VerificationMessage:
 class SelectedVerification:
     message_id: str
     received_at: datetime
-    code: str
+    method: Literal["code", "link"]
+    code: str = ""
+    link: str = ""
 
 
 def normalized_address(value: str) -> str:
@@ -115,6 +123,58 @@ def extract_code(body: str) -> str:
     return candidates.pop()
 
 
+def normalized_host(value: str) -> str:
+    host = value.strip().rstrip(".").casefold()
+    if not host or "/" in host or "@" in host:
+        raise VerificationSelectionError("Invalid verification-link host.")
+    try:
+        ascii_host = host.encode("idna").decode("ascii")
+    except UnicodeError as error:
+        raise VerificationSelectionError("Invalid verification-link host.") from error
+    if not all(
+        re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+        for label in ascii_host.split(".")
+    ):
+        raise VerificationSelectionError("Invalid verification-link host.")
+    return ascii_host
+
+
+def extract_verification_link(body: str, allowed_hosts: tuple[str, ...]) -> str:
+    normalized_allowed_hosts = {
+        normalized_host(host) for host in allowed_hosts if host.strip()
+    }
+    if not normalized_allowed_hosts:
+        raise VerificationSelectionError(
+            "Verification-link selection requires a verified allowed host."
+        )
+
+    candidates = set()
+    for raw_url in LINK_PATTERN.findall(html.unescape(body)):
+        candidate = raw_url.rstrip(".,;:!?)]}")
+        parsed = urlparse(candidate)
+        if parsed.scheme.casefold() != "https" or not parsed.hostname:
+            continue
+        if parsed.username or parsed.password:
+            continue
+        try:
+            if parsed.port not in {None, 443}:
+                continue
+            host = normalized_host(parsed.hostname)
+        except (ValueError, VerificationSelectionError):
+            continue
+        if any(
+            host == allowed_host or host.endswith(f".{allowed_host}")
+            for allowed_host in normalized_allowed_hosts
+        ):
+            candidates.add(candidate)
+
+    if len(candidates) != 1:
+        raise VerificationSelectionError(
+            "Verification message does not contain one unambiguous allowed HTTPS link."
+        )
+    return candidates.pop()
+
+
 def select_verification_message(
     messages: list[VerificationMessage], context: VerificationContext
 ) -> SelectedVerification:
@@ -124,6 +184,8 @@ def select_verification_message(
     expected_address = normalized_address(context.application_address)
     if not context.expected_identities or not context.browser_session.strip():
         raise VerificationSelectionError("Expected identity and browser session are required.")
+    if context.expected_method not in {"code", "link"}:
+        raise VerificationSelectionError("Expected verification method is invalid.")
 
     matches = []
     for message in messages:
@@ -131,7 +193,10 @@ def select_verification_message(
         recipient_addresses = {normalized_address(recipient) for recipient in message.recipients}
         if message.message_id in context.attempted_message_ids:
             continue
-        if received_at < requested_at or received_at - requested_at > MAX_CODE_AGE:
+        if (
+            received_at < requested_at
+            or received_at - requested_at > MAX_VERIFICATION_AGE
+        ):
             continue
         if expected_address not in recipient_addresses:
             continue
@@ -144,8 +209,17 @@ def select_verification_message(
         raise VerificationSelectionError(f"{qualifier} unambiguous verification message found.")
 
     selected = matches[0]
-    return SelectedVerification(
-        message_id=selected.message_id,
-        received_at=normalized_time(selected.received_at),
-        code=extract_code(selected.body),
-    )
+    common = {
+        "message_id": selected.message_id,
+        "received_at": normalized_time(selected.received_at),
+        "method": context.expected_method,
+    }
+    if context.expected_method == "link":
+        return SelectedVerification(
+            **common,
+            link=extract_verification_link(
+                selected.body,
+                context.allowed_link_hosts,
+            ),
+        )
+    return SelectedVerification(**common, code=extract_code(selected.body))

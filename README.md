@@ -1,8 +1,8 @@
 # Job Application Suite
 
-`job-application-suite` is an MIT-licensed Codex plugin for bounded job-application runs. The `0.1.0-beta.1` source includes duplicate-safe tracking, Gmail-assisted verification, Chrome and Computer Use guidance, OS-vault password storage, a local analytics dashboard, and an owner-only hosted dashboard.
+`job-application-suite` is an MIT-licensed Codex plugin for bounded job-application runs. The `0.1.0-beta.1` source includes duplicate-safe tracking, Handshake and user-named site workflows, required-cover-letter research and document creation, Gmail-assisted code or link verification, Chrome and Computer Use guidance, OS-vault password storage, a local analytics dashboard, and an owner-only hosted dashboard.
 
-This beta can submit applications in your name. Review the candidate profile, platform limitations, and run brief before allowing external data entry.
+This beta can prepare and submit applications in your name. Review the candidate profile, platform limitations, and run brief before allowing external data entry. Browser and Computer Use controls may still require action-time confirmation before sensitive data transmission, authentication-link use, or final submission.
 
 ## Requirements
 
