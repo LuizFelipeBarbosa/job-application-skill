@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apply to Jobs"
+  short_description: "Mass-apply with tailored resume and cover letter"
+  default_prompt: "Use $apply-to-jobs to apply to 10 matching jobs on Handshake. Tailor the resume and cover letter for each, create accounts and handle email verification as needed, submit without asking me per job, and report at the end."

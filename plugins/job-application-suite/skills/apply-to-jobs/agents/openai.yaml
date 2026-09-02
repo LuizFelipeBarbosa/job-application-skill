@@ -1,4 +1,0 @@
-interface:
-  display_name: "Apply to Jobs"
-  short_description: "Apply with tailored documents and verification"
-  default_prompt: "Use $apply-to-jobs to apply to 5 matching roles on my selected source. Reuse my authorized profile, create a tailored cover letter with a focused subagent when required, handle ordinary account and Gmail verification steps, and submit each completed application subject to required browser confirmations."

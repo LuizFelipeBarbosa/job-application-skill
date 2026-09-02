@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "applications": [
-    { "id": "submitted-one", "status": "submitted" },
-    { "id": "submitted-two", "status": "submitted" }
-  ]
-}

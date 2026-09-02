@@ -1,100 +1,47 @@
-# Job Application Suite
+# Job Applications
 
-`job-application-suite` is an MIT-licensed Codex plugin for bounded job-application runs. The `0.1.0-beta.1` source includes duplicate-safe tracking, Handshake and user-named site workflows, required-cover-letter research and document creation, Gmail-assisted code or link verification, Chrome and Computer Use guidance, OS-vault password storage, a local analytics dashboard, and an owner-only hosted dashboard.
+A single agent skill, `apply-to-jobs`, that mass-applies to jobs on my behalf. It runs under both Codex (Chrome plugin + Gmail connector) and Claude Code (Claude in Chrome + Gmail MCP) from the same `SKILL.md`.
 
-This beta can prepare and submit applications in your name. Review the candidate profile, platform limitations, and run brief before allowing external data entry. Browser and Computer Use controls may still require action-time confirmation before sensitive data transmission, authentication-link use, or final submission.
+Given "apply to 10 data science jobs on Handshake", it searches, checks fit against `private/profile.md`, writes a tailored resume and cover letter per job in my house style, creates ATS accounts and reads Gmail verification codes when needed, submits, and logs everything under `private/`. It does not ask permission per job; it skips what it cannot answer truthfully and reports those at the end.
 
-## Requirements
+## Layout
 
-- Python 3.9–3.13
-- uv 0.9.29 or newer
-- Node.js 22.13 or newer
-- pnpm 10.28.2 and npm with frozen lockfiles
-- Codex, the official Chrome integration, and the official Gmail connector
-- macOS Keychain or Windows Credential Locker for full support
+```
+skills/apply-to-jobs/     the skill (SKILL.md, references/, scripts/, assets/)
+.claude/skills/           symlink -> skills/apply-to-jobs   (Claude Code discovery)
+.agents/skills/           symlink -> skills/apply-to-jobs   (Codex discovery)
+private/                  gitignored personal data
+  profile.md              facts, standard answers, targets, never-do list
+  resume.md               resume source, rendered per job
+  documents/              Resume.pdf, Transcript.pdf, WritingSample.pdf, samples/*.md
+  applications.json       the log (jobs.py)
+  applications/<id>/      job.md, resume.pdf, cover_letter.pdf, answers.md per application
+  accounts.json           [{host, email, created}]; passwords are in the macOS Keychain
+  archive/                history from earlier versions of this skill
+```
 
-Linux supports the tracker, Gmail, dashboards, Chrome where available, and supported secure keyring backends, but not full Computer Use parity.
+## Setup (once)
 
-Install uv from the [official installation guide](https://docs.astral.sh/uv/getting-started/installation/) if `uv --version` is not available.
+1. `uv` installed (`brew install uv`). Scripts declare their own dependencies and run with `uv run`.
+2. Sign in to Handshake in Chrome. Connect Gmail in Codex (connector) or Claude Code (`/mcp`).
+3. Fill `private/profile.md` and `private/resume.md` (templates in `skills/apply-to-jobs/assets/`).
 
-## Install and diagnose
+## Run
 
-Install the complete plugin rather than copying only `SKILL.md`; the plugin also provides its Gmail app configuration, supporting scripts, references, and default configuration.
+In Codex: `$apply-to-jobs apply to 10 quant and data science jobs on Handshake`.
+In Claude Code: `/apply-to-jobs apply to 10 quant and data science jobs on Handshake`.
 
-Clone the public repository on the target machine:
+Check progress any time:
 
 ```bash
-git clone https://github.com/LuizFelipeBarbosa/job-application-skill.git
-cd job-application-skill
+uv run skills/apply-to-jobs/scripts/jobs.py status
+uv run skills/apply-to-jobs/scripts/jobs.py list --status needs_input
+uv run skills/apply-to-jobs/scripts/jobs.py report
 ```
 
-Register the repository marketplace and install the plugin with the Codex CLI:
+Render documents by hand:
 
 ```bash
-codex plugin marketplace add .
-codex plugin add job-application-suite@personal
+uv run skills/apply-to-jobs/scripts/render_resume.py --in private/resume.md --out out.pdf --png
+uv run skills/apply-to-jobs/scripts/render_cover_letter.py --in letter.md --out out.pdf --png
 ```
-
-The `personal` marketplace name comes from `.agents/plugins/marketplace.json`. To install through the desktop app instead, open the cloned repository in Codex, restart the app, open **Plugins**, select the **Personal** marketplace, and install **Job Application Suite**. Complete the Gmail authorization when prompted and make sure the official Chrome and Computer Use plugins are enabled.
-
-Repo-scoped `.agents` and `.claude` links point to the plugin's single canonical skill copy. Restart Codex after a CLI installation and use a new task so the installed skill is available as `job-application-suite:apply-to-jobs`.
-
-Create the isolated, lockfile-backed Python runtime without recording credentials. Bootstrap runs `uv sync --locked` against the skill's `pyproject.toml` and `uv.lock`, while keeping the environment at `.runtime/venv`:
-
-```bash
-python3 plugins/job-application-suite/skills/apply-to-jobs/scripts/bootstrap.py
-```
-
-Run the read-only local diagnostic:
-
-```bash
-.runtime/venv/bin/python \
-  plugins/job-application-suite/skills/apply-to-jobs/scripts/doctor.py \
-  --workspace . --format human
-```
-
-On Windows, use `.runtime\venv\Scripts\python.exe`. Doctor exits `0` for pass/warnings, `1` for a missing required capability, and `2` for invalid configuration. JSON output is available with `--format json`.
-
-Live Gmail, Chrome, upload, and Computer Use probes run only when explicitly requested. They use a profile check and the local synthetic fixture; they do not read ordinary mail, job-site data, or credentials.
-
-## Configure and run
-
-Workspace files in `config/` override the plugin defaults only after schema validation. Handshake is enabled by default. Chrome onboarding should grant Handshake and then approve each verified employer ATS domain once; never choose **Allow for all sites**.
-
-Prepare truthful candidate data under ignored `private/` storage:
-
-```bash
-mkdir -p private/documents
-cp plugins/job-application-suite/skills/apply-to-jobs/assets/candidate-profile.md \
-  private/candidate-profile.md
-```
-
-Then ask for a positive bounded target, for example:
-
-```text
-Apply to 5 matching new-grad software engineering jobs. Review each before submission.
-```
-
-That request authorizes ordinary accounts required solely for this bounded run. The run brief discloses the authorization before browser data entry. Paid services, public profiles, marketing, unusual terms, and changes to existing-account security still require confirmation.
-
-Gmail beta access is provider-neutral in design but ships only the Gmail adapter. It permits profile, narrow search, and selected-message read operations. Sending, drafting, forwarding, archiving, deleting, and labeling are prohibited.
-
-## Local dashboards
-
-The analytics dashboard is available normally:
-
-```bash
-cd dashboard
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Account Vault is disabled in ordinary launches. Enable it for one process with `pnpm dev:vault` or, after a build, `pnpm start:vault`, then open the printed fragment-token URL. The token is fresh for each launch, removed from the address bar, kept in tab session storage, and sent only as a bearer header. Passwords never enter HTTP responses.
-
-The diagnostic fixture is at `http://127.0.0.1:3000/diagnostics/browser` and must be used only with the bundled synthetic upload.
-
-The vendored `dashboard-sites/` companion permanently excludes credential operations and private fields. See its README for user-owned D1 provisioning and self-deployment; never use another installation's Sites project.
-
-## Security and beta status
-
-Read [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [docs/PLATFORM_SUPPORT.md](docs/PLATFORM_SUPPORT.md), and [docs/BETA_LIMITATIONS.md](docs/BETA_LIMITATIONS.md). `0.1.0-beta.1` is publishable only after automated checks and the macOS and Windows acceptance records in [docs/BETA_ACCEPTANCE.md](docs/BETA_ACCEPTANCE.md) are complete.
